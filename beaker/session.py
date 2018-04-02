@@ -342,9 +342,9 @@ class Session(dict):
                                                     self.crypto_module.getKeyLength())
             payload = b64decode(session_data[nonce_b64len:])
             if migration:
-                return nonce + b64encode(self.crypto_module_2.aesDecrypt(data, encrypt_key))
+                return self.crypto_module_2.aesDecrypt(data, encrypt_key)
             else:
-                return nonce + b64encode(self.crypto_module.aesDecrypt(data, encrypt_key))
+                return self.crypto_module.aesDecrypt(data, encrypt_key)
         else:
             data = b64decode(session_data)
 
@@ -379,9 +379,10 @@ class Session(dict):
             **self.namespace_args)
 
         # REMOVE AFTER MIGRATION
-        self.namespace2 = self.namespace_class(self.id + '_cryptography,
+        self.namespace2 = self.namespace_class(self.id,
             data_dir=self.data_dir,
             digest_filenames=False,
+            column_family='beaker_cryptography',
             **self.namespace_args)
         # END REMOVE AFTER MIGRATION
 
@@ -405,10 +406,12 @@ class Session(dict):
                 pass
 
             # Only consider the case where we successfully read a session
-            if self.timeout is not None and \
+            if session_data is None or len(session_data) == 0:
+                pass:
+            elif self.timeout is not None and \
               now - session_data['_accessed_time'] > self.timeout:
                 timed_out = True
-            elif session_data is not None and len(session_data) != 0:
+            else:
                 read_value = True
                 # Properly set the last_accessed time, which is different
                 # than the *currently* _accessed_time
