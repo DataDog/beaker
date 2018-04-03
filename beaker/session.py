@@ -394,7 +394,7 @@ class Session(dict):
         self.namespace2.acquire_read_lock()
         timed_out = False
         read_value = False
-        try:
+        f:
             self.clear()
             try:
                 session_data = self.namespace2['session']
@@ -402,12 +402,13 @@ class Session(dict):
                 if (session_data is not None and self.encrypt_key):
                     session_data = self._decrypt_data(session_data, migration=True)
             except (KeyError, TypeError):
+                session_data = None
                 # We still have another backend we could be reading from, so don't create new sessions here
                 pass
 
             # Only consider the case where we successfully read a session
             if session_data is None or len(session_data) == 0:
-                pass:
+                pass
             elif self.timeout is not None and \
               now - session_data['_accessed_time'] > self.timeout:
                 timed_out = True
