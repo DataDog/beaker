@@ -394,7 +394,8 @@ class Session(dict):
         self.namespace2.acquire_read_lock()
         timed_out = False
         read_value = False
-        f:
+        session_data = None
+        try:
             self.clear()
             try:
                 session_data = self.namespace2['session']
