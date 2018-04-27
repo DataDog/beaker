@@ -85,6 +85,55 @@ class SignedCookie(SimpleCookie):
         sig = HMAC.new(self.secret, val.encode('utf-8'), SHA1).hexdigest()
         return str(val), ("%s%s" % (sig, val))
 
+class MigrationState(object):
+    """Enum for representing the states of a crypto migration"""
+    
+    PRE_MIGRATION = 0
+    MIGRATION_WRITES = 1
+    MIGRATION_READS = 2
+    POST_MIGRATION = 3
+
+
+class CryptoMigration(object):
+
+    """Class representing settings for a crypto migration
+
+    :param migration_state: PRE_MIGRATION means only write with legacy crypto
+                            MIGRATION_WRITES means write to both datastores
+                            MIGRATION_READS means read from both datastores
+                            POST_MIGRATION means stop using the old datastore
+    
+    :param column_family: str with the column family sessions encrypted with
+                          the new module will be written to. Specific to
+                          cassandra namespace.
+    :param crypto_module: new crypto module to use
+    """
+    def __init__(self,
+                 migration_state=MigrationState.PRE_MIGRATION,
+                 column_family='beaker_crypto_migration',
+                 crypto_module='cryptography'
+                 *args, **kwargs):
+
+        self.migration_state = migration_state
+        self.column_family = column_family
+        self.crypto_module = crypto_module
+
+        super(CryptoMigration,self).__init(*args, **kwargs)
+    
+    def reads(self):
+        if self.column_family == MigrationState.MIGRATION_READS:
+            return True
+        if self.column_family == MigrationState.POST_MIGRATION:
+            return True
+        return False
+    
+    def writes(self):
+        if self.reads():
+            return True
+        if self.column_family == MigrationState.MIGRATION_WRITES:
+            return True
+        return False
+
 
 class Session(dict):
     """Session object that uses container package for storage.
@@ -126,7 +175,8 @@ class Session(dict):
                                For security reason this is 128bits be default. If you want
                                to keep backward compatibility with sessions generated before 1.8.0
                                set this to 48.
-    :param crypto_type: encryption module to use
+    :param crypto_type: encryption module to use.
+    :param migration_provider: function returning a Migration object.
     """
     def __init__(self, request, id=None, invalidate_corrupt=False,
                  use_cookies=True, type=None, data_dir=None,
@@ -135,7 +185,7 @@ class Session(dict):
                  data_serializer='pickle', secret=None,
                  secure=False, namespace_class=None, httponly=False,
                  encrypt_key=None, validate_key=None, encrypt_nonce_bits=DEFAULT_NONCE_BITS,
-                 crypto_type='default',
+                 crypto_type='default', migration_provider=None,
                  **namespace_args):
         if not type:
             if data_dir:
@@ -162,6 +212,8 @@ class Session(dict):
 
         self._set_serializer(data_serializer)
 
+        self.migration_provider = migration_provider
+
         # Default cookie domain/path
         self._domain = cookie_domain
         self._path = cookie_path
@@ -173,7 +225,9 @@ class Session(dict):
         self.validate_key = validate_key
         self.encrypt_nonce_size = get_nonce_size(encrypt_nonce_bits)
         self.crypto_module = get_crypto_module(crypto_type)
-        self.crypto_module_2 = get_crypto_module('cryptography')
+        if self.migration_provider is not None:
+            migration = self.migration_provider()
+            self.crypto_module_2 = get_crypto_module(migration.crypto_module)
         self.id = id
         self.accessed_dict = {}
         self.invalidate_corrupt = invalidate_corrupt
@@ -379,69 +433,70 @@ class Session(dict):
             **self.namespace_args)
 
         # REMOVE AFTER MIGRATION
-        self.namespace2 = self.namespace_class(self.id,
-            data_dir=self.data_dir,
-            digest_filenames=False,
-            column_family='beaker_cryptography',
-            **self.namespace_args)
+        if self.migration_provider is not None and self.migration_provider().reads():
+            self.namespace2 = self.namespace_class(self.id,
+                data_dir=self.data_dir,
+                digest_filenames=False,
+                column_family='beaker_cryptography',
+                **self.namespace_args)
         # END REMOVE AFTER MIGRATION
 
         now = time.time()
         if self.use_cookies:
             self.request['set_cookie'] = True
 
-        # REMOVE AFTER MIGRATION - Attempt to read from the new backend
-        self.namespace2.acquire_read_lock()
         timed_out = False
         read_value = False
         session_data = None
-        try:
-            self.clear()
+        # REMOVE AFTER MIGRATION - Attempt to read from the new backend
+        if self.migration_provider is not None and self.migration_provider().reads():
+            self.namespace2.acquire_read_lock()
             try:
-                session_data = self.namespace2['session']
+                self.clear()
+                try:
+                    session_data = self.namespace2['session']
 
-                if (session_data is not None and self.encrypt_key):
-                    session_data = self._decrypt_data(session_data, migration=True)
-            except (KeyError, TypeError):
-                session_data = None
-                # We still have another backend we could be reading from, so don't create new sessions here
-                pass
+                    if (session_data is not None and self.encrypt_key):
+                        session_data = self._decrypt_data(session_data, migration=True)
+                except (KeyError, TypeError):
+                    session_data = None
+                    # We still have another backend we could be reading from, so don't create new sessions here
+                    pass
 
-            # Only consider the case where we successfully read a session
-            if session_data is None or len(session_data) == 0:
-                pass
-            elif self.timeout is not None and \
-              now - session_data['_accessed_time'] > self.timeout:
-                timed_out = True
-            else:
-                read_value = True
-                # Properly set the last_accessed time, which is different
-                # than the *currently* _accessed_time
-                if self.is_new or '_accessed_time' not in session_data:
-                    self.last_accessed = None
+                # Only consider the case where we successfully read a session
+                if session_data is None or len(session_data) == 0:
+                    pass
+                elif self.timeout is not None and \
+                    now - session_data['_accessed_time'] > self.timeout:
+                    timed_out = True
                 else:
-                    self.last_accessed = session_data['_accessed_time']
+                    read_value = True
+                    # Properly set the last_accessed time, which is different
+                    # than the *currently* _accessed_time
+                    if self.is_new or '_accessed_time' not in session_data:
+                        self.last_accessed = None
+                    else:
+                        self.last_accessed = session_data['_accessed_time']
 
-                # Update the current _accessed_time
-                session_data['_accessed_time'] = now
+                    # Update the current _accessed_time
+                    session_data['_accessed_time'] = now
 
-                # Set the path if applicable
-                if '_path' in session_data:
-                    self._path = session_data['_path']
-                self.update(session_data)
-                self.accessed_dict = session_data.copy()
-        finally:
-            self.namespace2.release_read_lock()
-        if timed_out:
-            self.invalidate()
+                    # Set the path if applicable
+                    if '_path' in session_data:
+                        self._path = session_data['_path']
+                    self.update(session_data)
+                    self.accessed_dict = session_data.copy()
+            finally:
+                self.namespace2.release_read_lock()
+            if timed_out:
+                self.invalidate()
 
         if read_value:
             return
         # END REMOVE AFTER MIGRATION
 
         # MIGRATION NOTES: If read_value == False, that means we couldn't read a key from
-        # the cryptography keyspace, so we fall back on reading from the pycrypto keyspace.
-
+        # the new keyspace, so we fall back on reading from the existing keyspace.
         self.namespace.acquire_read_lock()
         timed_out = False
         try:
@@ -519,50 +574,57 @@ class Session(dict):
                                     data_dir=self.data_dir,
                                     digest_filenames=False,
                                     **self.namespace_args)
-            self.namespace2 = self.namespace_class(
-                self.id + '_cryptography,
-                data_dir=self.data_dir,
-                digest_filenames=False,
-                **self.namespace_args)
+            
+        if not hasattr(self, 'namespace2') or self.namespace2.namespace != self.id:
+            if self.migration_provider and self.migration_provider().writes():
+                self.namespace2 = self.namespace_class(
+                    self.id,
+                    data_dir=self.data_dir,
+                    digest_filenames=False,
+                    **self.namespace_args)
 
-        self.namespace.acquire_write_lock(replace=True)
-        try:
-            if accessed_only:
-                data = dict(self.accessed_dict.items())
-            else:
-                data = dict(self.items())
+        # Migration config allows writes to the original namespace to be disabled completely.
+        if (self.migration_provider is None or
+            self.migration_provider().migration_state != MigrationState.POST_MIGRATION):
+            self.namespace.acquire_write_lock(replace=True)
+            try:
+                if accessed_only:
+                    data = dict(self.accessed_dict.items())
+                else:
+                    data = dict(self.items())
 
-            if self.encrypt_key:
-                data = self._encrypt_data(data)
+                if self.encrypt_key:
+                    data = self._encrypt_data(data)
 
-            # Save the data
-            if not data and 'session' in self.namespace:
-                del self.namespace['session']
-            else:
-                self.namespace['session'] = data
-        finally:
-            self.namespace.release_write_lock()
-        if self.use_cookies and self.is_new:
-            self.request['set_cookie'] = True
+                # Save the data
+                if not data and 'session' in self.namespace:
+                    del self.namespace['session']
+                else:
+                    self.namespace['session'] = data
+            finally:
+                self.namespace.release_write_lock()
+            if self.use_cookies and self.is_new:
+                self.request['set_cookie'] = True
         
         # REMOVE THIS BLOCK AFTER MIGRATION
-        self.namespace2.acquire_write_lock(replace=True)
-        try:
-            if accessed_only:
-                data = dict(self.accessed_dict.items())
-            else:
-                data = dict(self.items())
+        if self.migration_provider and self.migration_provider.writes():
+            self.namespace2.acquire_write_lock(replace=True)
+            try:
+                if accessed_only:
+                    data = dict(self.accessed_dict.items())
+                else:
+                    data = dict(self.items())
 
-            if self.encrypt_key:
-                data = self._encrypt_data(data, migration=True)
+                if self.encrypt_key:
+                    data = self._encrypt_data(data, migration=True)
 
-            # Save the data
-            if not data and 'session' in self.namespace2:
-                del self.namespace2['session']
-            else:
-                self.namespace2['session'] = data
-        finally:
-            self.namespace2.release_write_lock()
+                # Save the data
+                if not data and 'session' in self.namespace2:
+                    del self.namespace2['session']
+                else:
+                    self.namespace2['session'] = data
+            finally:
+                self.namespace2.release_write_lock()
         # END REMOVE THIS BLOCK AFTER MIGRATION
         
 
