@@ -111,7 +111,7 @@ class CryptoMigration(object):
     def __init__(self,
                  migration_state=MigrationState.PRE_MIGRATION,
                  column_family='beaker_crypto_migration',
-                 crypto_module='cryptography'
+                 crypto_module='cryptography',
                  **kwargs):
 
         self.migration_state = migration_state
