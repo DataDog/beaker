@@ -396,9 +396,9 @@ class Session(dict):
                                                     self.crypto_module.getKeyLength())
             payload = b64decode(session_data[nonce_b64len:])
             if migration:
-                return self.crypto_module_2.aesDecrypt(data, encrypt_key)
+                return self.crypto_module_2.aesDecrypt(payload, encrypt_key)
             else:
-                return self.crypto_module.aesDecrypt(data, encrypt_key)
+                return self.crypto_module.aesDecrypt(payload, encrypt_key)
         else:
             data = b64decode(session_data)
 
