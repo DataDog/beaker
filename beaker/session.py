@@ -657,6 +657,8 @@ class Session(dict):
 
         """
         self.namespace.acquire_write_lock()
+        if self.namespace2 is not None:
+            self.namespace2.acquire_write_lock()
 
     def unlock(self):
         """Unlocks this session against other processes/threads.  This
@@ -668,6 +670,207 @@ class Session(dict):
 
         """
         self.namespace.release_write_lock()
+        if self.namespace2 is not None:
+            self.namespace2.release_write_lock()
+
+class CookieSession(Session):
+    """Pure cookie-based session
+    Options recognized when using cookie-based sessions are slightly
+    more restricted than general sessions.
+    :param key: The name the cookie should be set to.
+    :param timeout: How long session data is considered valid. This is used
+                    regardless of the cookie being present or not to determine
+                    whether session data is still valid.
+    :type timeout: int
+    :param save_accessed_time: Whether beaker should save the session's access
+                               time (True) or only modification time (False).
+                               Defaults to True.
+    :param cookie_expires: Expiration date for cookie
+    :param cookie_domain: Domain to use for the cookie.
+    :param cookie_path: Path to use for the cookie.
+    :param data_serializer: If ``"json"`` or ``"pickle"`` should be used
+                              to serialize data. Can also be an object with
+                              ``loads` and ``dumps`` methods. By default
+                              ``"pickle"`` is used.
+    :param secure: Whether or not the cookie should only be sent over SSL.
+    :param httponly: Whether or not the cookie should only be accessible by
+                     the browser not by JavaScript.
+    :param encrypt_key: The key to use for the local session encryption, if not
+                        provided the session will not be encrypted.
+    :param validate_key: The key used to sign the local encrypted session
+    :param invalidate_corrupt: How to handle corrupt data when loading. When
+                               set to True, then corrupt data will be silently
+                               invalidated and a new session created,
+                               otherwise invalid data will cause an exception.
+    :type invalidate_corrupt: bool
+    :param crypto_type: The crypto module to use.
+    """
+    def __init__(self, request, key='beaker.session.id', timeout=None,
+                 save_accessed_time=True, cookie_expires=True, cookie_domain=None,
+                 cookie_path='/', encrypt_key=None, validate_key=None, secure=False,
+                 httponly=False, data_serializer='pickle',
+                 encrypt_nonce_bits=DEFAULT_NONCE_BITS, invalidate_corrupt=False,
+                 crypto_type='default',
+                 **kwargs):
+
+        self.crypto_module = get_crypto_module(crypto_type)
+
+        if not self.crypto_module.has_aes and encrypt_key:
+            raise InvalidCryptoBackendError("No AES library is installed, can't generate "
+                                            "encrypted cookie-only Session.")
+
+        self.request = request
+        self.key = key
+        self.timeout = timeout
+        self.save_atime = save_accessed_time
+        self.cookie_expires = cookie_expires
+        self.encrypt_key = encrypt_key
+        self.validate_key = validate_key
+        self.encrypt_nonce_size = get_nonce_size(encrypt_nonce_bits)
+        self.request['set_cookie'] = False
+        self.secure = secure
+        self.httponly = httponly
+        self._domain = cookie_domain
+        self._path = cookie_path
+        self.invalidate_corrupt = invalidate_corrupt
+        self._set_serializer(data_serializer)
+
+        try:
+            cookieheader = request['cookie']
+        except KeyError:
+            cookieheader = ''
+
+        if validate_key is None:
+            raise BeakerException("No validate_key specified for Cookie only "
+                                  "Session.")
+        if timeout and not save_accessed_time:
+            raise BeakerException("timeout requires save_accessed_time")
+
+        try:
+            self.cookie = SignedCookie(
+                validate_key,
+                input=cookieheader,
+            )
+        except http_cookies.CookieError:
+            self.cookie = SignedCookie(
+                validate_key,
+                input=None,
+            )
+
+        self['_id'] = _session_id()
+        self.is_new = True
+
+        # If we have a cookie, load it
+        if self.key in self.cookie and self.cookie[self.key].value is not None:
+            self.is_new = False
+            try:
+                cookie_data = self.cookie[self.key].value
+                if cookie_data is InvalidSignature:
+                    raise BeakerException("Invalid signature")
+                self.update(self._decrypt_data(cookie_data))
+                self._path = self.get('_path', '/')
+            except Exception as e:
+                if self.invalidate_corrupt:
+                    util.warn(
+                        "Invalidating corrupt session %s; "
+                        "error was: %s.  Set invalidate_corrupt=False "
+                        "to propagate this exception." % (self.id, e))
+                    self.invalidate()
+                else:
+                    raise
+
+            if self.timeout is not None:
+                now = time.time()
+                last_accessed_time = self.get('_accessed_time', now)
+                if now - last_accessed_time > self.timeout:
+                    self.clear()
+
+            self.accessed_dict = self.copy()
+            self._create_cookie()
+
+    def created(self):
+        return self['_creation_time']
+    created = property(created)
+
+    def id(self):
+        return self['_id']
+    id = property(id)
+
+    def _set_domain(self, domain):
+        self['_domain'] = domain
+        self._domain = domain
+
+    def _get_domain(self):
+        return self._domain
+
+    domain = property(_get_domain, _set_domain)
+
+    def _set_path(self, path):
+        self['_path'] = self._path = path
+
+    def _get_path(self):
+        return self._path
+
+    path = property(_get_path, _set_path)
+
+    def save(self, accessed_only=False):
+        """Saves the data for this session to persistent storage"""
+        if accessed_only and (self.is_new or not self.save_atime):
+            return
+        if accessed_only:
+            self.clear()
+            self.update(self.accessed_dict)
+        self._create_cookie()
+
+    def expire(self):
+        """Delete the 'expires' attribute on this Session, if any."""
+
+        self.pop('_expires', None)
+
+    def _create_cookie(self):
+        if '_creation_time' not in self:
+            self['_creation_time'] = time.time()
+        if '_id' not in self:
+            self['_id'] = _session_id()
+        self['_accessed_time'] = time.time()
+
+        val = self._encrypt_data()
+        if len(val) > 4064:
+            raise BeakerException("Cookie value is too long to store")
+
+        self.cookie[self.key] = val
+
+        if '_expires' in self:
+            expires = self['_expires']
+        else:
+            expires = None
+        expires = self._set_cookie_expires(expires)
+        if expires is not None:
+            self['_expires'] = expires
+
+        if '_domain' in self:
+            self.cookie[self.key]['domain'] = self['_domain']
+        elif self._domain:
+            self.cookie[self.key]['domain'] = self._domain
+        if self.secure:
+            self.cookie[self.key]['secure'] = True
+        self._set_cookie_http_only()
+
+        self.cookie[self.key]['path'] = self.get('_path', '/')
+
+        self.request['cookie_out'] = self.cookie[self.key].output(header='')
+        self.request['set_cookie'] = True
+
+    def delete(self):
+        """Delete the cookie, and clear the session"""
+        # Send a delete cookie request
+        self._delete_cookie()
+        self.clear()
+
+    def invalidate(self):
+        """Clear the contents and start a new session"""
+        self.clear()
+        self['_id'] = _session_id()
 
 class SessionObject(object):
     """Session proxy/lazy creator
