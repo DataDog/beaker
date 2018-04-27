@@ -112,13 +112,13 @@ class CryptoMigration(object):
                  migration_state=MigrationState.PRE_MIGRATION,
                  column_family='beaker_crypto_migration',
                  crypto_module='cryptography'
-                 *args, **kwargs):
+                 **kwargs):
 
         self.migration_state = migration_state
         self.column_family = column_family
         self.crypto_module = crypto_module
 
-        super(CryptoMigration,self).__init(*args, **kwargs)
+        super(CryptoMigration,self).__init__(**kwargs)
     
     def reads(self):
         if self.column_family == MigrationState.MIGRATION_READS:
