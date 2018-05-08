@@ -121,16 +121,16 @@ class CryptoMigration(object):
         super(CryptoMigration,self).__init__(**kwargs)
     
     def reads(self):
-        if self.column_family == MigrationState.MIGRATION_READS:
+        if self.migration_state == MigrationState.MIGRATION_READS:
             return True
-        if self.column_family == MigrationState.POST_MIGRATION:
+        if self.migration_state == MigrationState.POST_MIGRATION:
             return True
         return False
     
     def writes(self):
         if self.reads():
             return True
-        if self.column_family == MigrationState.MIGRATION_WRITES:
+        if self.migration_state == MigrationState.MIGRATION_WRITES:
             return True
         return False
 
