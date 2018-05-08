@@ -607,7 +607,7 @@ class Session(dict):
                 self.request['set_cookie'] = True
         
         # REMOVE THIS BLOCK AFTER MIGRATION
-        if self.migration_provider and self.migration_provider.writes():
+        if self.migration_provider and self.migration_provider().writes():
             self.namespace2.acquire_write_lock(replace=True)
             try:
                 if accessed_only:
