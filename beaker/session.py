@@ -460,8 +460,19 @@ class Session(dict):
                         session_data = self._decrypt_data(session_data, migration=True)
                 except (KeyError, TypeError):
                     session_data = None
-                    # We still have another backend we could be reading from, so don't create new sessions here
-                    pass
+                    if (self.migration_provider is None or
+                        self.migration_provider().migration_state != MigrationState.POST_MIGRATION):
+                        # We still have another backend we could be reading from, so don't create new sessions here
+                        pass
+                    else:
+                        # Post migration we should 
+                        session_data = {
+                            '_creation_time': now,
+                            '_accessed_time': now
+                        }
+                        self.is_new = True
+                        read_value = True
+
 
                 # Only consider the case where we successfully read a session
                 if session_data is None or len(session_data) == 0:
