@@ -434,7 +434,7 @@ class Session(dict):
 
         # REMOVE AFTER MIGRATION
         if self.migration_provider is not None and self.migration_provider().reads():
-            self.namespace2 = self.namespace_class(self.migration_provider.prefix + self.id,
+            self.namespace2 = self.namespace_class(self.migration_provider().key_prefix + self.id,
                 data_dir=self.data_dir,
                 digest_filenames=False,
                 **self.namespace_args)
