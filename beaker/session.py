@@ -110,12 +110,12 @@ class CryptoMigration(object):
     """
     def __init__(self,
                  migration_state=MigrationState.PRE_MIGRATION,
-                 column_family='beaker_crypto_migration',
+                 key_prefix='beaker_crypto_migration',
                  crypto_module='cryptography',
                  **kwargs):
 
         self.migration_state = migration_state
-        self.column_family = column_family
+        self.key_prefix = key_prefix
         self.crypto_module = crypto_module
 
         super(CryptoMigration,self).__init__(**kwargs)
@@ -434,10 +434,9 @@ class Session(dict):
 
         # REMOVE AFTER MIGRATION
         if self.migration_provider is not None and self.migration_provider().reads():
-            self.namespace2 = self.namespace_class(self.id,
+            self.namespace2 = self.namespace_class(self.migration_provider.prefix + self.id,
                 data_dir=self.data_dir,
                 digest_filenames=False,
-                column_family='beaker_cryptography',
                 **self.namespace_args)
         # END REMOVE AFTER MIGRATION
 
