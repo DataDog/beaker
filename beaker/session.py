@@ -20,7 +20,6 @@ class _InvalidSignatureType(object):
     def __bool__(self):
         return False
 
-
 InvalidSignature = _InvalidSignatureType()
 
 
@@ -110,12 +109,12 @@ class CryptoMigration(object):
     """
     def __init__(self,
                  migration_state=MigrationState.PRE_MIGRATION,
-                 key_prefix='beaker_crypto_migration',
+                 column_family='beaker_crypto_migration',
                  crypto_module='cryptography',
                  **kwargs):
 
         self.migration_state = migration_state
-        self.key_prefix = key_prefix
+        self.column_family = column_family
         self.crypto_module = crypto_module
 
         super(CryptoMigration,self).__init__(**kwargs)
@@ -463,9 +462,11 @@ class Session(dict):
 
         # REMOVE AFTER MIGRATION
         if self.new_reads():
-            self.namespace2 = self.namespace_class(self.migration_provider().key_prefix + self.id,
+            log.info("Creating namespace2 for reads")
+            self.namespace2 = self.namespace_class(self.id,
                 data_dir=self.data_dir,
                 digest_filenames=False,
+                column_family=self.migration_provider().column_family,
                 **self.namespace_args)
         # END REMOVE AFTER MIGRATION
 
@@ -609,10 +610,6 @@ class Session(dict):
         if timed_out:
             self.invalidate()
 
-    def id2(self):
-        if not self.new_writes():
-            return self.id
-        return self.migration_provider().key_prefix + self.id
 
     def save(self, accessed_only=False):
         """Saves the data for this session to persistent storage
@@ -637,10 +634,11 @@ class Session(dict):
                                     **self.namespace_args)
 
         if self.new_writes():  
-            if not hasattr(self, 'namespace2') or self.namespace2.namespace != self.id2():
+            if not hasattr(self, 'namespace2') or self.namespace2.namespace != self.id:
                 self.namespace2 = self.namespace_class(
-                    self.id2(),
+                    self.id,
                     data_dir=self.data_dir,
+                    column_family=self.migration_provider().column_family,
                     digest_filenames=False,
                     **self.namespace_args)
 
