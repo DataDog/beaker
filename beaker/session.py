@@ -458,10 +458,11 @@ class Session(dict):
 
     def load(self):
         "Loads the data from this session from persistent storage"
-        self.namespace = self.namespace_class(self.id,
-            data_dir=self.data_dir,
-            digest_filenames=False,
-            **self.namespace_args)
+        if self.old_reads():
+            self.namespace = self.namespace_class(self.id,
+                data_dir=self.data_dir,
+                digest_filenames=False,
+                **self.namespace_args)
 
         # REMOVE AFTER MIGRATION
         if self.new_reads():
@@ -629,12 +630,13 @@ class Session(dict):
 
         # this session might not have a namespace yet or the session id
         # might have been regenerated
-        if not hasattr(self, 'namespace') or self.namespace.namespace != self.id:
-            self.namespace = self.namespace_class(
-                                    self.id,
-                                    data_dir=self.data_dir,
-                                    digest_filenames=False,
-                                    **self.namespace_args)
+        if self.old_writes():
+            if not hasattr(self, 'namespace') or self.namespace.namespace != self.id:
+                self.namespace = self.namespace_class(
+                                        self.id,
+                                        data_dir=self.data_dir,
+                                        digest_filenames=False,
+                                        **self.namespace_args)
 
         if self.new_writes():  
             if not hasattr(self, 'namespace2') or self.namespace2.namespace != self.id:
