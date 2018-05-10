@@ -11,6 +11,9 @@ from beaker.cookie import SimpleCookie
 
 __all__ = ['SignedCookie', 'Session', 'InvalidSignature']
 
+import logging
+
+log = logging.getLogger(__name__)
 
 class _InvalidSignatureType(object):
     """Returned from SignedCookie when the value's signature was invalid."""
@@ -644,6 +647,7 @@ class Session(dict):
 
         # Migration config allows writes to the original namespace to be disabled completely.
         if self.old_writes():
+            log.info("Writing to pre-migration table")
             self.namespace.acquire_write_lock(replace=True)
             try:
                 if accessed_only:
@@ -661,11 +665,10 @@ class Session(dict):
                     self.namespace['session'] = data
             finally:
                 self.namespace.release_write_lock()
-            if self.use_cookies and self.is_new:
-                self.request['set_cookie'] = True
         
         # REMOVE THIS BLOCK AFTER MIGRATION
         if self.new_writes():
+            log.info("Writing to post-migration table")
             self.namespace2.acquire_write_lock(replace=True)
             try:
                 if accessed_only:
@@ -678,13 +681,17 @@ class Session(dict):
 
                 # Save the data
                 if not data and 'session' in self.namespace2:
+                    log.info("deleting from post-migration table")
                     del self.namespace2['session']
                 else:
+                    log.info("writing to post-migration table")
                     self.namespace2['session'] = data
             finally:
                 self.namespace2.release_write_lock()
         # END REMOVE THIS BLOCK AFTER MIGRATION
-        
+
+        if self.use_cookies and self.is_new:
+            self.request['set_cookie'] = True        
 
     def revert(self):
         """Revert the session to its original state from its first
