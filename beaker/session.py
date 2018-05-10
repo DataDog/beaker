@@ -286,6 +286,35 @@ class Session(dict):
     def has_key(self, name):
         return name in self
 
+    def new_reads(self):
+        if self.migration_provider is None:
+            return False
+        
+        migration = self.migration_provider()
+        return migration.reads()
+
+    def new_writes(self):
+        if self.migration_provider is None:
+            return False
+        
+        migration = self.migration_provider()
+        return migration.writes()
+    
+    def old_reads(self):
+        if self.migration_provider is None:
+            return True
+        
+        migration = self.migration_provider()
+        return migration.migration_state != MigrationState.POST_MIGRATION
+    
+    def old_writes(self):
+        if self.migration_provider is None:
+            return True
+        
+        migration = self.migration_provider()
+        return migration.migration_state != MigrationState.POST_MIGRATION
+    
+
     def _set_cookie_values(self, expires=None):
         self.cookie[self.key] = self.id
         if self._domain:
@@ -433,7 +462,7 @@ class Session(dict):
             **self.namespace_args)
 
         # REMOVE AFTER MIGRATION
-        if self.migration_provider is not None and self.migration_provider().reads():
+        if self.new_reads():
             self.namespace2 = self.namespace_class(self.migration_provider().key_prefix + self.id,
                 data_dir=self.data_dir,
                 digest_filenames=False,
@@ -448,7 +477,7 @@ class Session(dict):
         read_value = False
         session_data = None
         # REMOVE AFTER MIGRATION - Attempt to read from the new backend
-        if self.migration_provider is not None and self.migration_provider().reads():
+        if self.new_reads():
             self.namespace2.acquire_read_lock()
             try:
                 self.clear()
@@ -457,10 +486,19 @@ class Session(dict):
 
                     if (session_data is not None and self.encrypt_key):
                         session_data = self._decrypt_data(session_data, migration=True)
+                    elif not self.old_reads():
+                        # Memcached always returns a key, its None when its not
+                        # present
+                        session_data = {
+                            '_creation_time': now,
+                            '_accessed_time': now
+                        }
+                        self.is_new = True
+                        read_value = True
+
                 except (KeyError, TypeError):
                     session_data = None
-                    if (self.migration_provider is None or
-                        self.migration_provider().migration_state != MigrationState.POST_MIGRATION):
+                    if self.old_reads():
                         # We still have another backend we could be reading from, so don't create new sessions here
                         pass
                     else:
@@ -472,6 +510,13 @@ class Session(dict):
                         self.is_new = True
                         read_value = True
 
+                if not self.old_reads() and (session_data is None or len(session_data) == 0):
+                    session_data = {
+                        '_creation_time': now,
+                        '_accessed_time': now
+                    }
+                    self.is_new = True
+                    read_value = True
 
                 # Only consider the case where we successfully read a session
                 if session_data is None or len(session_data) == 0:
@@ -479,6 +524,7 @@ class Session(dict):
                 elif self.timeout is not None and \
                     now - session_data['_accessed_time'] > self.timeout:
                     timed_out = True
+                    read_value = True
                 else:
                     read_value = True
                     # Properly set the last_accessed time, which is different
@@ -563,6 +609,11 @@ class Session(dict):
         if timed_out:
             self.invalidate()
 
+    def id2(self):
+        if not self.new_writes():
+            return self.id
+        return self.migration_provider().key_prefix + self.id
+
     def save(self, accessed_only=False):
         """Saves the data for this session to persistent storage
 
@@ -584,18 +635,17 @@ class Session(dict):
                                     data_dir=self.data_dir,
                                     digest_filenames=False,
                                     **self.namespace_args)
-            
-        if not hasattr(self, 'namespace2') or self.namespace2.namespace != self.id:
-            if self.migration_provider and self.migration_provider().writes():
+
+        if self.new_writes():  
+            if not hasattr(self, 'namespace2') or self.namespace2.namespace != self.id2():
                 self.namespace2 = self.namespace_class(
-                    self.id,
+                    self.id2(),
                     data_dir=self.data_dir,
                     digest_filenames=False,
                     **self.namespace_args)
 
         # Migration config allows writes to the original namespace to be disabled completely.
-        if (self.migration_provider is None or
-            self.migration_provider().migration_state != MigrationState.POST_MIGRATION):
+        if self.old_writes():
             self.namespace.acquire_write_lock(replace=True)
             try:
                 if accessed_only:
@@ -617,7 +667,7 @@ class Session(dict):
                 self.request['set_cookie'] = True
         
         # REMOVE THIS BLOCK AFTER MIGRATION
-        if self.migration_provider and self.migration_provider().writes():
+        if self.new_writes():
             self.namespace2.acquire_write_lock(replace=True)
             try:
                 if accessed_only:
