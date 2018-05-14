@@ -187,7 +187,7 @@ class Session(dict):
                  data_serializer='pickle', secret=None,
                  secure=False, namespace_class=None, httponly=False,
                  encrypt_key=None, validate_key=None, encrypt_nonce_bits=DEFAULT_NONCE_BITS,
-                 crypto_type='default', migration_provider=None,
+                 crypto_type='default', migration_provider=None, statsd=None,
                  **namespace_args):
         if not type:
             if data_dir:
@@ -215,6 +215,7 @@ class Session(dict):
         self._set_serializer(data_serializer)
 
         self.migration_provider = migration_provider
+        self.statsd = statsd
 
         # Default cookie domain/path
         self._domain = cookie_domain
@@ -287,6 +288,11 @@ class Session(dict):
 
     def has_key(self, name):
         return name in self
+
+    def _increment(self, metric, tags):
+        if self.statsd is None:
+            return
+        self.statsd.increment(metric, tags=tags)
 
     def new_reads(self):
         if self.migration_provider is None:
@@ -483,6 +489,7 @@ class Session(dict):
         session_data = None
         # REMOVE AFTER MIGRATION - Attempt to read from the new backend
         if self.new_reads():
+            self._increment('dd.beaker.reads', ['migration:post'])
             self.namespace2.acquire_read_lock()
             try:
                 self.clear()
@@ -558,6 +565,7 @@ class Session(dict):
 
         # MIGRATION NOTES: If read_value == False, that means we couldn't read a key from
         # the new keyspace, so we fall back on reading from the existing keyspace.
+        self._increment('dd.beaker.reads', ['migration:pre'])
         self.namespace.acquire_read_lock()
         timed_out = False
         try:
@@ -649,6 +657,7 @@ class Session(dict):
 
         # Migration config allows writes to the original namespace to be disabled completely.
         if self.old_writes():
+            self._increment('dd.beaker.writes', ['migration:pre'])
             log.info("Writing to pre-migration table")
             self.namespace.acquire_write_lock(replace=True)
             try:
@@ -670,6 +679,7 @@ class Session(dict):
         
         # REMOVE THIS BLOCK AFTER MIGRATION
         if self.new_writes():
+            self._increment('dd.beaker.writes', ['migration:post'])
             log.info("Writing to post-migration table")
             self.namespace2.acquire_write_lock(replace=True)
             try:
