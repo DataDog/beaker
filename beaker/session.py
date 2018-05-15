@@ -11,7 +11,6 @@ from beaker.cookie import SimpleCookie
 
 __all__ = ['SignedCookie', 'Session', 'InvalidSignature']
 
-
 class _InvalidSignatureType(object):
     """Returned from SignedCookie when the value's signature was invalid."""
     def __nonzero__(self):
@@ -19,7 +18,6 @@ class _InvalidSignatureType(object):
 
     def __bool__(self):
         return False
-
 
 InvalidSignature = _InvalidSignatureType()
 
@@ -85,6 +83,55 @@ class SignedCookie(SimpleCookie):
         sig = HMAC.new(self.secret, val.encode('utf-8'), SHA1).hexdigest()
         return str(val), ("%s%s" % (sig, val))
 
+class MigrationState(object):
+    """Enum for representing the states of a crypto migration"""
+    
+    PRE_MIGRATION = 0
+    MIGRATION_WRITES = 1
+    MIGRATION_READS = 2
+    POST_MIGRATION = 3
+
+
+class CryptoMigration(object):
+
+    """Class representing settings for a crypto migration
+
+    :param migration_state: PRE_MIGRATION means only write with legacy crypto
+                            MIGRATION_WRITES means write to both datastores
+                            MIGRATION_READS means read from both datastores
+                            POST_MIGRATION means stop using the old datastore
+    
+    :param column_family: str with the column family sessions encrypted with
+                          the new module will be written to. Specific to
+                          cassandra namespace.
+    :param crypto_module: new crypto module to use
+    """
+    def __init__(self,
+                 migration_state=MigrationState.PRE_MIGRATION,
+                 column_family='beaker_crypto_migration',
+                 crypto_module='cryptography',
+                 **kwargs):
+
+        self.migration_state = migration_state
+        self.column_family = column_family
+        self.crypto_module = crypto_module
+
+        super(CryptoMigration,self).__init__(**kwargs)
+    
+    def reads(self):
+        if self.migration_state == MigrationState.MIGRATION_READS:
+            return True
+        if self.migration_state == MigrationState.POST_MIGRATION:
+            return True
+        return False
+    
+    def writes(self):
+        if self.reads():
+            return True
+        if self.migration_state == MigrationState.MIGRATION_WRITES:
+            return True
+        return False
+
 
 class Session(dict):
     """Session object that uses container package for storage.
@@ -126,7 +173,8 @@ class Session(dict):
                                For security reason this is 128bits be default. If you want
                                to keep backward compatibility with sessions generated before 1.8.0
                                set this to 48.
-    :param crypto_type: encryption module to use
+    :param crypto_type: encryption module to use.
+    :param migration_provider: function returning a Migration object.
     """
     def __init__(self, request, id=None, invalidate_corrupt=False,
                  use_cookies=True, type=None, data_dir=None,
@@ -135,7 +183,7 @@ class Session(dict):
                  data_serializer='pickle', secret=None,
                  secure=False, namespace_class=None, httponly=False,
                  encrypt_key=None, validate_key=None, encrypt_nonce_bits=DEFAULT_NONCE_BITS,
-                 crypto_type='default',
+                 crypto_type='default', migration_provider=None, statsd=None,
                  **namespace_args):
         if not type:
             if data_dir:
@@ -162,6 +210,9 @@ class Session(dict):
 
         self._set_serializer(data_serializer)
 
+        self.migration_provider = migration_provider
+        self.statsd = statsd
+
         # Default cookie domain/path
         self._domain = cookie_domain
         self._path = cookie_path
@@ -173,6 +224,9 @@ class Session(dict):
         self.validate_key = validate_key
         self.encrypt_nonce_size = get_nonce_size(encrypt_nonce_bits)
         self.crypto_module = get_crypto_module(crypto_type)
+        if self.migration_provider is not None:
+            migration = self.migration_provider()
+            self.crypto_module_2 = get_crypto_module(migration.crypto_module)
         self.id = id
         self.accessed_dict = {}
         self.invalidate_corrupt = invalidate_corrupt
@@ -230,6 +284,40 @@ class Session(dict):
 
     def has_key(self, name):
         return name in self
+
+    def _increment(self, metric, tags):
+        if self.statsd is None:
+            return
+        self.statsd.increment(metric, tags=tags)
+
+    def new_reads(self):
+        if self.migration_provider is None:
+            return False
+        
+        migration = self.migration_provider()
+        return migration.reads()
+
+    def new_writes(self):
+        if self.migration_provider is None:
+            return False
+        
+        migration = self.migration_provider()
+        return migration.writes()
+    
+    def old_reads(self):
+        if self.migration_provider is None:
+            return True
+        
+        migration = self.migration_provider()
+        return migration.migration_state != MigrationState.POST_MIGRATION
+    
+    def old_writes(self):
+        if self.migration_provider is None:
+            return True
+        
+        migration = self.migration_provider()
+        return migration.migration_state != MigrationState.POST_MIGRATION
+    
 
     def _set_cookie_values(self, expires=None):
         self.cookie[self.key] = self.id
@@ -310,7 +398,7 @@ class Session(dict):
 
     path = property(_get_path, _set_path)
 
-    def _encrypt_data(self, session_data=None):
+    def _encrypt_data(self, session_data=None, migration=False):
         """Serialize, encipher, and base64 the session dict"""
         session_data = session_data or self.copy()
         if self.encrypt_key:
@@ -321,12 +409,15 @@ class Session(dict):
                                                     1,
                                                     self.crypto_module.getKeyLength())
             data = self.serializer.dumps(session_data)
-            return nonce + b64encode(self.crypto_module.aesEncrypt(data, encrypt_key))
+            if migration:
+                return nonce + b64encode(self.crypto_module_2.aesEncrypt(data, encrypt_key))
+            else:
+                return nonce + b64encode(self.crypto_module.aesEncrypt(data, encrypt_key))
         else:
             data = self.serializer.dumps(session_data)
             return b64encode(data)
 
-    def _decrypt_data(self, session_data):
+    def _decrypt_data(self, session_data, migration=False):
         """Base64, decipher, then un-serialize the data for the session
         dict"""
         if self.encrypt_key:
@@ -337,7 +428,10 @@ class Session(dict):
                                                     1,
                                                     self.crypto_module.getKeyLength())
             payload = b64decode(session_data[nonce_b64len:])
-            data = self.crypto_module.aesDecrypt(payload, encrypt_key)
+            if migration:
+                data = self.crypto_module_2.aesDecrypt(payload, encrypt_key)
+            else:
+                data = self.crypto_module.aesDecrypt(payload, encrypt_key)
         else:
             data = b64decode(session_data)
 
@@ -366,14 +460,107 @@ class Session(dict):
 
     def load(self):
         "Loads the data from this session from persistent storage"
-        self.namespace = self.namespace_class(self.id,
-            data_dir=self.data_dir,
-            digest_filenames=False,
-            **self.namespace_args)
+        if self.old_reads():
+            self.namespace = self.namespace_class(self.id,
+                data_dir=self.data_dir,
+                digest_filenames=False,
+                **self.namespace_args)
+
+        # REMOVE AFTER MIGRATION
+        if self.new_reads():
+            self.namespace2 = self.namespace_class(self.id,
+                data_dir=self.data_dir,
+                digest_filenames=False,
+                column_family=self.migration_provider().column_family,
+                **self.namespace_args)
+        # END REMOVE AFTER MIGRATION
+
         now = time.time()
         if self.use_cookies:
             self.request['set_cookie'] = True
 
+        timed_out = False
+        read_value = False
+        session_data = None
+        # REMOVE AFTER MIGRATION - Attempt to read from the new backend
+        if self.new_reads():
+            self._increment('dd.beaker.reads', ['migration:post'])
+            self.namespace2.acquire_read_lock()
+            try:
+                self.clear()
+                try:
+                    session_data = self.namespace2['session']
+
+                    if (session_data is not None and self.encrypt_key):
+                        session_data = self._decrypt_data(session_data, migration=True)
+                    elif not self.old_reads():
+                        # Memcached always returns a key, its None when its not
+                        # present
+                        session_data = {
+                            '_creation_time': now,
+                            '_accessed_time': now
+                        }
+                        self.is_new = True
+                        read_value = True
+
+                except (KeyError, TypeError):
+                    session_data = None
+                    if self.old_reads():
+                        # We still have another backend we could be reading from, so don't create new sessions here
+                        pass
+                    else:
+                        # Post migration we should 
+                        session_data = {
+                            '_creation_time': now,
+                            '_accessed_time': now
+                        }
+                        self.is_new = True
+                        read_value = True
+
+                if not self.old_reads() and (session_data is None or len(session_data) == 0):
+                    session_data = {
+                        '_creation_time': now,
+                        '_accessed_time': now
+                    }
+                    self.is_new = True
+                    read_value = True
+
+                # Only consider the case where we successfully read a session
+                if session_data is None or len(session_data) == 0:
+                    pass
+                elif self.timeout is not None and \
+                    now - session_data['_accessed_time'] > self.timeout:
+                    timed_out = True
+                    read_value = True
+                else:
+                    read_value = True
+                    # Properly set the last_accessed time, which is different
+                    # than the *currently* _accessed_time
+                    if self.is_new or '_accessed_time' not in session_data:
+                        self.last_accessed = None
+                    else:
+                        self.last_accessed = session_data['_accessed_time']
+
+                    # Update the current _accessed_time
+                    session_data['_accessed_time'] = now
+
+                    # Set the path if applicable
+                    if '_path' in session_data:
+                        self._path = session_data['_path']
+                    self.update(session_data)
+                    self.accessed_dict = session_data.copy()
+            finally:
+                self.namespace2.release_read_lock()
+            if timed_out:
+                self.invalidate()
+
+        if read_value:
+            return
+        # END REMOVE AFTER MIGRATION
+
+        # MIGRATION NOTES: If read_value == False, that means we couldn't read a key from
+        # the new keyspace, so we fall back on reading from the existing keyspace.
+        self._increment('dd.beaker.reads', ['migration:pre'])
         self.namespace.acquire_read_lock()
         timed_out = False
         try:
@@ -430,6 +617,7 @@ class Session(dict):
         if timed_out:
             self.invalidate()
 
+
     def save(self, accessed_only=False):
         """Saves the data for this session to persistent storage
 
@@ -445,32 +633,68 @@ class Session(dict):
 
         # this session might not have a namespace yet or the session id
         # might have been regenerated
-        if not hasattr(self, 'namespace') or self.namespace.namespace != self.id:
-            self.namespace = self.namespace_class(
-                                    self.id,
-                                    data_dir=self.data_dir,
-                                    digest_filenames=False,
-                                    **self.namespace_args)
+        if self.old_writes():
+            if not hasattr(self, 'namespace') or self.namespace.namespace != self.id:
+                self.namespace = self.namespace_class(
+                                        self.id,
+                                        data_dir=self.data_dir,
+                                        digest_filenames=False,
+                                        **self.namespace_args)
 
-        self.namespace.acquire_write_lock(replace=True)
-        try:
-            if accessed_only:
-                data = dict(self.accessed_dict.items())
-            else:
-                data = dict(self.items())
+        if self.new_writes():  
+            if not hasattr(self, 'namespace2') or self.namespace2.namespace != self.id:
+                self.namespace2 = self.namespace_class(
+                    self.id,
+                    data_dir=self.data_dir,
+                    column_family=self.migration_provider().column_family,
+                    digest_filenames=False,
+                    **self.namespace_args)
 
-            if self.encrypt_key:
-                data = self._encrypt_data(data)
+        # Migration config allows writes to the original namespace to be disabled completely.
+        if self.old_writes():
+            self._increment('dd.beaker.writes', ['migration:pre'])
+            self.namespace.acquire_write_lock(replace=True)
+            try:
+                if accessed_only:
+                    data = dict(self.accessed_dict.items())
+                else:
+                    data = dict(self.items())
 
-            # Save the data
-            if not data and 'session' in self.namespace:
-                del self.namespace['session']
-            else:
-                self.namespace['session'] = data
-        finally:
-            self.namespace.release_write_lock()
+                if self.encrypt_key:
+                    data = self._encrypt_data(data)
+
+                # Save the data
+                if not data and 'session' in self.namespace:
+                    del self.namespace['session']
+                else:
+                    self.namespace['session'] = data
+            finally:
+                self.namespace.release_write_lock()
+        
+        # REMOVE THIS BLOCK AFTER MIGRATION
+        if self.new_writes():
+            self._increment('dd.beaker.writes', ['migration:post'])
+            self.namespace2.acquire_write_lock(replace=True)
+            try:
+                if accessed_only:
+                    data = dict(self.accessed_dict.items())
+                else:
+                    data = dict(self.items())
+
+                if self.encrypt_key:
+                    data = self._encrypt_data(data, migration=True)
+
+                # Save the data
+                if not data and 'session' in self.namespace2:
+                    del self.namespace2['session']
+                else:
+                    self.namespace2['session'] = data
+            finally:
+                self.namespace2.release_write_lock()
+        # END REMOVE THIS BLOCK AFTER MIGRATION
+
         if self.use_cookies and self.is_new:
-            self.request['set_cookie'] = True
+            self.request['set_cookie'] = True        
 
     def revert(self):
         """Revert the session to its original state from its first
@@ -501,6 +725,8 @@ class Session(dict):
 
         """
         self.namespace.acquire_write_lock()
+        if self.namespace2 is not None:
+            self.namespace2.acquire_write_lock()
 
     def unlock(self):
         """Unlocks this session against other processes/threads.  This
@@ -512,14 +738,13 @@ class Session(dict):
 
         """
         self.namespace.release_write_lock()
-
+        if self.namespace2 is not None:
+            self.namespace2.release_write_lock()
 
 class CookieSession(Session):
     """Pure cookie-based session
-
     Options recognized when using cookie-based sessions are slightly
     more restricted than general sessions.
-
     :param key: The name the cookie should be set to.
     :param timeout: How long session data is considered valid. This is used
                     regardless of the cookie being present or not to determine
@@ -714,7 +939,6 @@ class CookieSession(Session):
         """Clear the contents and start a new session"""
         self.clear()
         self['_id'] = _session_id()
-
 
 class SessionObject(object):
     """Session proxy/lazy creator
