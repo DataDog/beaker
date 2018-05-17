@@ -211,6 +211,7 @@ class Session(dict):
         self._set_serializer(data_serializer)
 
         self.migration_provider = migration_provider
+        self.crypto_migration = None
         self.statsd = statsd
 
         # Default cookie domain/path
@@ -290,33 +291,42 @@ class Session(dict):
             return
         self.statsd.increment(metric, tags=tags)
 
+    def _ensure_crypto_migration(self):
+        if self.migration_provider is None:
+            return
+
+        if self.crypto_migration is not None:
+            return
+
+        self.crypto_migration = self.migration_provider()
+
     def new_reads(self):
         if self.migration_provider is None:
             return False
         
-        migration = self.migration_provider()
-        return migration.reads()
+        self._ensure_crypto_migration()
+        return self.crypto_migration.reads()
 
     def new_writes(self):
         if self.migration_provider is None:
             return False
         
-        migration = self.migration_provider()
-        return migration.writes()
+        self._ensure_crypto_migration()
+        return self.crypto_migration.writes()
     
     def old_reads(self):
         if self.migration_provider is None:
             return True
         
-        migration = self.migration_provider()
-        return migration.migration_state != MigrationState.POST_MIGRATION
+        self._ensure_crypto_migration()
+        return self.crypto_migration.migration_state != MigrationState.POST_MIGRATION
     
     def old_writes(self):
         if self.migration_provider is None:
             return True
         
-        migration = self.migration_provider()
-        return migration.migration_state != MigrationState.POST_MIGRATION
+        self._ensure_crypto_migration()
+        return self.crypto_migration.migration_state != MigrationState.POST_MIGRATION
     
 
     def _set_cookie_values(self, expires=None):
