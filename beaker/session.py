@@ -85,7 +85,7 @@ class SignedCookie(SimpleCookie):
 
 class MigrationState(object):
     """Enum for representing the states of a crypto migration"""
-    
+
     PRE_MIGRATION = 0
     MIGRATION_WRITES = 1
     MIGRATION_READS = 2
@@ -100,7 +100,7 @@ class CryptoMigration(object):
                             MIGRATION_WRITES means write to both datastores
                             MIGRATION_READS means read from both datastores
                             POST_MIGRATION means stop using the old datastore
-    
+
     :param column_family: str with the column family sessions encrypted with
                           the new module will be written to. Specific to
                           cassandra namespace.
@@ -117,14 +117,14 @@ class CryptoMigration(object):
         self.crypto_module = crypto_module
 
         super(CryptoMigration,self).__init__(**kwargs)
-    
+
     def reads(self):
         if self.migration_state == MigrationState.MIGRATION_READS:
             return True
         if self.migration_state == MigrationState.POST_MIGRATION:
             return True
         return False
-    
+
     def writes(self):
         if self.reads():
             return True
@@ -293,31 +293,31 @@ class Session(dict):
     def new_reads(self):
         if self.migration_provider is None:
             return False
-        
+
         migration = self.migration_provider()
         return migration.reads()
 
     def new_writes(self):
         if self.migration_provider is None:
             return False
-        
+
         migration = self.migration_provider()
         return migration.writes()
-    
+
     def old_reads(self):
         if self.migration_provider is None:
             return True
-        
+
         migration = self.migration_provider()
         return migration.migration_state != MigrationState.POST_MIGRATION
-    
+
     def old_writes(self):
         if self.migration_provider is None:
             return True
-        
+
         migration = self.migration_provider()
         return migration.migration_state != MigrationState.POST_MIGRATION
-    
+
 
     def _set_cookie_values(self, expires=None):
         self.cookie[self.key] = self.id
@@ -509,7 +509,7 @@ class Session(dict):
                         # We still have another backend we could be reading from, so don't create new sessions here
                         pass
                     else:
-                        # Post migration we should 
+                        # Post migration we should
                         session_data = {
                             '_creation_time': now,
                             '_accessed_time': now
@@ -641,7 +641,7 @@ class Session(dict):
                                         digest_filenames=False,
                                         **self.namespace_args)
 
-        if self.new_writes():  
+        if self.new_writes():
             if not hasattr(self, 'namespace2') or self.namespace2.namespace != self.id:
                 self.namespace2 = self.namespace_class(
                     self.id,
@@ -670,7 +670,7 @@ class Session(dict):
                     self.namespace['session'] = data
             finally:
                 self.namespace.release_write_lock()
-        
+
         # REMOVE THIS BLOCK AFTER MIGRATION
         if self.new_writes():
             self._increment('dd.beaker.writes', ['migration:post'])
@@ -694,7 +694,7 @@ class Session(dict):
         # END REMOVE THIS BLOCK AFTER MIGRATION
 
         if self.use_cookies and self.is_new:
-            self.request['set_cookie'] = True        
+            self.request['set_cookie'] = True
 
     def revert(self):
         """Revert the session to its original state from its first
