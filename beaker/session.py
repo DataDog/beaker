@@ -12,19 +12,21 @@ from beaker.cache import clsmap
 from beaker.exceptions import BeakerException, InvalidCryptoBackendError
 from beaker.cookie import SimpleCookie
 
-__all__ = ['SignedCookie', 'Session', 'InvalidSignature']
+__all__ = ["SignedCookie", "Session", "InvalidSignature"]
 
 
-log = logging.getLogger('dd.beaker.' + __name__)
+log = logging.getLogger("dd.beaker." + __name__)
 
 
 class _InvalidSignatureType(object):
     """Returned from SignedCookie when the value's signature was invalid."""
+
     def __nonzero__(self):
         return False
 
     def __bool__(self):
         return False
+
 
 InvalidSignature = _InvalidSignatureType()
 
@@ -34,35 +36,35 @@ try:
 
     def _session_id():
         return uuid.uuid4().hex
+
+
 except ImportError:
     import random
-    if hasattr(os, 'getpid'):
+
+    if hasattr(os, "getpid"):
         getpid = os.getpid
     else:
+
         def getpid():
-            return ''
+            return ""
 
     def _session_id():
-        id_str = "%f%s%f%s" % (
-                    time.time(),
-                    id({}),
-                    random.random(),
-                    getpid()
-                )
+        id_str = "%f%s%f%s" % (time.time(), id({}), random.random(), getpid())
         # NB: nothing against second parameter to b64encode, but it seems
         #     to be slower than simple chained replacement
         if not PY2:
-            raw_id = b64encode(sha1(id_str.encode('ascii')).digest())
-            return str(raw_id.replace(b'+', b'-').replace(b'/', b'_').rstrip(b'='))
+            raw_id = b64encode(sha1(id_str.encode("ascii")).digest())
+            return str(raw_id.replace(b"+", b"-").replace(b"/", b"_").rstrip(b"="))
         else:
             raw_id = b64encode(sha1(id_str).digest())
-            return raw_id.replace('+', '-').replace('/', '_').rstrip('=')
+            return raw_id.replace("+", "-").replace("/", "_").rstrip("=")
 
 
 class SignedCookie(SimpleCookie):
     """Extends python cookie to give digital signature support"""
+
     def __init__(self, secret, input=None):
-        self.secret = secret.encode('UTF-8')
+        self.secret = secret.encode("UTF-8")
         http_cookies.BaseCookie.__init__(self, input)
 
     def value_decode(self, val):
@@ -70,7 +72,7 @@ class SignedCookie(SimpleCookie):
         if not val:
             return None, val
 
-        sig = HMAC.new(self.secret, val[40:].encode('utf-8'), SHA1).hexdigest()
+        sig = HMAC.new(self.secret, val[40:].encode("utf-8"), SHA1).hexdigest()
 
         # Avoid timing attacks
         invalid_bits = 0
@@ -87,8 +89,9 @@ class SignedCookie(SimpleCookie):
             return val[40:], val
 
     def value_encode(self, val):
-        sig = HMAC.new(self.secret, val.encode('utf-8'), SHA1).hexdigest()
+        sig = HMAC.new(self.secret, val.encode("utf-8"), SHA1).hexdigest()
         return str(val), ("%s%s" % (sig, val))
+
 
 class MigrationState(object):
     """Enum for representing the states of a crypto migration"""
@@ -113,17 +116,20 @@ class CryptoMigration(object):
                           cassandra namespace.
     :param crypto_module: new crypto module to use
     """
-    def __init__(self,
-                 migration_state=MigrationState.PRE_MIGRATION,
-                 column_family='beaker_crypto_migration',
-                 crypto_module='cryptography',
-                 **kwargs):
+
+    def __init__(
+        self,
+        migration_state=MigrationState.PRE_MIGRATION,
+        column_family="beaker_crypto_migration",
+        crypto_module="cryptography",
+        **kwargs
+    ):
 
         self.migration_state = migration_state
         self.column_family = column_family
         self.crypto_module = crypto_module
 
-        super(CryptoMigration,self).__init__(**kwargs)
+        super(CryptoMigration, self).__init__(**kwargs)
 
     def reads(self):
         if self.migration_state == MigrationState.MIGRATION_READS:
@@ -183,20 +189,39 @@ class Session(dict):
     :param crypto_type: encryption module to use.
     :param migration_provider: function returning a Migration object.
     """
-    def __init__(self, request, id=None, invalidate_corrupt=False,
-                 use_cookies=True, type=None, data_dir=None,
-                 key='beaker.session.id', timeout=None, save_accessed_time=True,
-                 cookie_expires=True, cookie_domain=None, cookie_path='/',
-                 data_serializer='pickle', secret=None,
-                 secure=False, namespace_class=None, httponly=False,
-                 encrypt_key=None, validate_key=None, encrypt_nonce_bits=DEFAULT_NONCE_BITS,
-                 crypto_type='default', migration_provider=None, statsd=None,
-                 **namespace_args):
+
+    def __init__(
+        self,
+        request,
+        id=None,
+        invalidate_corrupt=False,
+        use_cookies=True,
+        type=None,
+        data_dir=None,
+        key="beaker.session.id",
+        timeout=None,
+        save_accessed_time=True,
+        cookie_expires=True,
+        cookie_domain=None,
+        cookie_path="/",
+        data_serializer="pickle",
+        secret=None,
+        secure=False,
+        namespace_class=None,
+        httponly=False,
+        encrypt_key=None,
+        validate_key=None,
+        encrypt_nonce_bits=DEFAULT_NONCE_BITS,
+        crypto_type="default",
+        migration_provider=None,
+        statsd=None,
+        **namespace_args
+    ):
         if not type:
             if data_dir:
-                self.type = 'file'
+                self.type = "file"
             else:
-                self.type = 'memory'
+                self.type = "memory"
         else:
             self.type = type
 
@@ -239,18 +264,12 @@ class Session(dict):
         self.invalidate_corrupt = invalidate_corrupt
 
         if self.use_cookies:
-            cookieheader = request.get('cookie', '')
+            cookieheader = request.get("cookie", "")
             if secret:
                 try:
-                    self.cookie = SignedCookie(
-                        secret,
-                        input=cookieheader,
-                    )
+                    self.cookie = SignedCookie(secret, input=cookieheader)
                 except http_cookies.CookieError:
-                    self.cookie = SignedCookie(
-                        secret,
-                        input=None,
-                    )
+                    self.cookie = SignedCookie(secret, input=None)
             else:
                 self.cookie = SimpleCookie(input=cookieheader)
 
@@ -264,7 +283,7 @@ class Session(dict):
         self.is_new = self.id is None
         if self.is_new:
             self._create_id()
-            self['_accessed_time'] = self['_creation_time'] = time.time()
+            self["_accessed_time"] = self["_creation_time"] = time.time()
         else:
             try:
                 self.load()
@@ -273,19 +292,20 @@ class Session(dict):
                     util.warn(
                         "Invalidating corrupt session %s; "
                         "error was: %s.  Set invalidate_corrupt=False "
-                        "to propagate this exception." % (self.id, e))
+                        "to propagate this exception." % (self.id, e)
+                    )
                     self.invalidate()
                 else:
                     raise
 
     def _set_serializer(self, data_serializer):
         self.data_serializer = data_serializer
-        if self.data_serializer == 'json':
+        if self.data_serializer == "json":
             self.serializer = util.JsonSerializer()
-        elif self.data_serializer == 'pickle':
+        elif self.data_serializer == "pickle":
             self.serializer = util.PickleSerializer()
         elif isinstance(self.data_serializer, string_type):
-            raise BeakerException('Invalid value for data_serializer: %s' % data_serializer)
+            raise BeakerException("Invalid value for data_serializer: %s" % data_serializer)
         else:
             self.serializer = data_serializer
 
@@ -325,15 +345,14 @@ class Session(dict):
         migration = self.migration_provider()
         return migration.migration_state != MigrationState.POST_MIGRATION
 
-
     def _set_cookie_values(self, expires=None):
         self.cookie[self.key] = self.id
         if self._domain:
-            self.cookie[self.key]['domain'] = self._domain
+            self.cookie[self.key]["domain"] = self._domain
         if self.secure:
-            self.cookie[self.key]['secure'] = True
+            self.cookie[self.key]["secure"] = True
         self._set_cookie_http_only()
-        self.cookie[self.key]['path'] = self._path
+        self.cookie[self.key]["path"] = self._path
 
         self._set_cookie_expires(expires)
 
@@ -347,31 +366,29 @@ class Session(dict):
         elif isinstance(expires, datetime):
             expires_date = expires
         elif expires is not True:
-            raise ValueError("Invalid argument for cookie_expires: %s"
-                             % repr(self.cookie_expires))
+            raise ValueError("Invalid argument for cookie_expires: %s" % repr(self.cookie_expires))
         self.cookie_expires = expires
         if not self.cookie or self.key not in self.cookie:
             self.cookie[self.key] = self.id
         if expires is True:
-            self.cookie[self.key]['expires'] = ''
+            self.cookie[self.key]["expires"] = ""
             return True
-        self.cookie[self.key]['expires'] = \
-            expires_date.strftime("%a, %d-%b-%Y %H:%M:%S GMT")
+        self.cookie[self.key]["expires"] = expires_date.strftime("%a, %d-%b-%Y %H:%M:%S GMT")
         return expires_date
 
     def _update_cookie_out(self, set_cookie=True):
         self._set_cookie_values()
-        self.request['cookie_out'] = self.cookie[self.key].output(header='')
-        self.request['set_cookie'] = set_cookie
+        self.request["cookie_out"] = self.cookie[self.key].output(header="")
+        self.request["set_cookie"] = set_cookie
 
     def _set_cookie_http_only(self):
         try:
             if self.httponly:
-                self.cookie[self.key]['httponly'] = True
+                self.cookie[self.key]["httponly"] = True
         except http_cookies.CookieError as e:
-            if 'Invalid Attribute httponly' not in str(e):
+            if "Invalid Attribute httponly" not in str(e):
                 raise
-            util.warn('Python 2.6+ is required to use httponly')
+            util.warn("Python 2.6+ is required to use httponly")
 
     def _create_id(self, set_new=True):
         self.id = _session_id()
@@ -385,10 +402,10 @@ class Session(dict):
 
     @property
     def created(self):
-        return self['_creation_time']
+        return self["_creation_time"]
 
     def _set_domain(self, domain):
-        self['_domain'] = self._domain = domain
+        self["_domain"] = self._domain = domain
         self._update_cookie_out()
 
     def _get_domain(self):
@@ -397,7 +414,7 @@ class Session(dict):
     domain = property(_get_domain, _set_domain)
 
     def _set_path(self, path):
-        self['_path'] = self._path = path
+        self["_path"] = self._path = path
         self._update_cookie_out()
 
     def _get_path(self):
@@ -411,10 +428,9 @@ class Session(dict):
         if self.encrypt_key:
             nonce_len, nonce_b64len = self.encrypt_nonce_size
             nonce = b64encode(os.urandom(nonce_len))[:nonce_b64len]
-            encrypt_key = crypto.generateCryptoKeys(self.encrypt_key,
-                                                    self.validate_key + nonce,
-                                                    1,
-                                                    self.crypto_module.getKeyLength())
+            encrypt_key = crypto.generateCryptoKeys(
+                self.encrypt_key, self.validate_key + nonce, 1, self.crypto_module.getKeyLength()
+            )
             data = self.serializer.dumps(session_data)
             if migration:
                 return nonce + b64encode(self.crypto_module_2.aesEncrypt(data, encrypt_key))
@@ -430,10 +446,9 @@ class Session(dict):
         if self.encrypt_key:
             __, nonce_b64len = self.encrypt_nonce_size
             nonce = session_data[:nonce_b64len]
-            encrypt_key = crypto.generateCryptoKeys(self.encrypt_key,
-                                                    self.validate_key + nonce,
-                                                    1,
-                                                    self.crypto_module.getKeyLength())
+            encrypt_key = crypto.generateCryptoKeys(
+                self.encrypt_key, self.validate_key + nonce, 1, self.crypto_module.getKeyLength()
+            )
             payload = b64decode(session_data[nonce_b64len:])
             if migration:
                 data = self.crypto_module_2.aesDecrypt(payload, encrypt_key)
@@ -445,7 +460,7 @@ class Session(dict):
         return self.serializer.loads(data)
 
     def _delete_cookie(self):
-        self.request['set_cookie'] = True
+        self.request["set_cookie"] = True
         expires = datetime.utcnow() - timedelta(365)
         self._set_cookie_values(expires)
         self._update_cookie_out()
@@ -468,51 +483,49 @@ class Session(dict):
     def load(self):
         "Loads the data from this session from persistent storage"
         if self.old_reads():
-            self.namespace = self.namespace_class(self.id,
-                data_dir=self.data_dir,
-                digest_filenames=False,
-                **self.namespace_args)
+            self.namespace = self.namespace_class(
+                self.id, data_dir=self.data_dir, digest_filenames=False, **self.namespace_args
+            )
 
         # REMOVE AFTER MIGRATION
         if self.new_reads():
-            self.namespace2 = self.namespace_class(self.id,
+            self.namespace2 = self.namespace_class(
+                self.id,
                 data_dir=self.data_dir,
                 digest_filenames=False,
                 column_family=self.migration_provider().column_family,
-                **self.namespace_args)
+                **self.namespace_args
+            )
         # END REMOVE AFTER MIGRATION
 
         now = time.time()
         if self.use_cookies:
-            self.request['set_cookie'] = True
+            self.request["set_cookie"] = True
 
-        rid = ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(12))
+        rid = "".join(random.choice(string.ascii_letters + string.digits) for _ in range(12))
 
         timed_out = False
         read_value = False
         session_data = None
         # REMOVE AFTER MIGRATION - Attempt to read from the new backend
-        if self.new_reads(): # TRUE > [READS, POST]
+        if self.new_reads():  # TRUE > [READS, POST]
             log.info("[{}] [session migration] [new_reads] read attempt".format(rid))
-            self._increment('dd.beaker.reads.new.attempt')
+            self._increment("dd.beaker.reads.new.attempt", [])
             self.namespace2.acquire_read_lock()
             try:
                 self.clear()
                 try:
-                    session_data = self.namespace2['session']
-                    if (session_data is not None and self.encrypt_key):
+                    session_data = self.namespace2["session"]
+                    if session_data is not None and self.encrypt_key:
                         log.info("[{}] [session migration] [new_reads] session found".format(rid))
-                        self._increment('dd.beaker.reads.new.found')
+                        self._increment("dd.beaker.reads.new.found", [])
                         session_data = self._decrypt_data(session_data, migration=True)
-                    elif not self.old_reads(): # self.old_reads == True
+                    elif not self.old_reads():  # self.old_reads == True
                         log.info("[{}] [session migration] [new_reads] not old reads and session not found".format(rid))
-                        self._increment('dd.beaker.reads.new.not_found', ['type:post-migration'])
+                        self._increment("dd.beaker.reads.new.not_found", ["type:post-migration"])
 
                         # Memcached always returns a key, its None when its not present
-                        session_data = {
-                            '_creation_time': now,
-                            '_accessed_time': now
-                        }
+                        session_data = {"_creation_time": now, "_accessed_time": now}
                         self.is_new = True
                         read_value = True
 
@@ -520,38 +533,34 @@ class Session(dict):
                     session_data = None
                     if self.old_reads():
                         log.info("[{}] [session migration] [new_reads] old reads and key/type error".format(rid))
-                        self._increment('dd.beaker.reads.new.not_found', ['type:old-reads-error'])
+                        self._increment("dd.beaker.reads.new.not_found", ["type:old-reads-error"])
                         # We still have another backend we could be reading from, so don't create new sessions here
                         pass
                     else:
                         log.info("[{}] [session migration] [new_reads] not old reads and key/type error".format(rid))
-                        self._increment('dd.beaker.reads.new.not_found', ['type:not-old-reads-error'])
+                        self._increment("dd.beaker.reads.new.not_found", ["type:not-old-reads-error"])
                         # Post migration we should
-                        session_data = {
-                            '_creation_time': now,
-                            '_accessed_time': now
-                        }
+                        session_data = {"_creation_time": now, "_accessed_time": now}
                         self.is_new = True
                         read_value = True
 
                 if not self.old_reads() and (session_data is None or len(session_data) == 0):
-                    log.info("[{}] [session migration] [new_reads] not old reads and session is none or len 0".format(rid))
-                    self._increment('dd.beaker.reads.new.not_found', ['type:not-old-reads-no-session-data'])
-                    session_data = {
-                        '_creation_time': now,
-                        '_accessed_time': now
-                    }
+                    log.info(
+                        "[{}] [session migration] [new_reads] not old reads and session is none or len 0".format(rid)
+                    )
+                    self._increment("dd.beaker.reads.new.not_found", ["type:not-old-reads-no-session-data"])
+                    session_data = {"_creation_time": now, "_accessed_time": now}
                     self.is_new = True
                     read_value = True
 
                 # Only consider the case where we successfully read a session
                 if session_data is None or len(session_data) == 0:
                     log.info("[{}] [session migration] [new_reads] session is none or len 0".format(rid))
-                    self._increment('dd.beaker.reads.new.not_found', ['type:no-session-data'])
+                    self._increment("dd.beaker.reads.new.not_found", ["type:no-session-data"])
                     pass
-                elif self.timeout is not None and now - session_data['_accessed_time'] > self.timeout:
+                elif self.timeout is not None and now - session_data["_accessed_time"] > self.timeout:
                     log.info("[{}] [session migration] [new_reads] session is not None and timeout".format(rid))
-                    self._increment('dd.beaker.reads.new.timeout')
+                    self._increment("dd.beaker.reads.new.timeout", [])
                     timed_out = True
                     read_value = True
                 else:
@@ -559,18 +568,18 @@ class Session(dict):
                     read_value = True
                     # Properly set the last_accessed time, which is different
                     # than the *currently* _accessed_time
-                    if self.is_new or '_accessed_time' not in session_data:
+                    if self.is_new or "_accessed_time" not in session_data:
                         self.last_accessed = None
                     else:
-                        self.last_accessed = session_data['_accessed_time']
+                        self.last_accessed = session_data["_accessed_time"]
 
                     # Update the current _accessed_time
-                    session_data['_accessed_time'] = now
+                    session_data["_accessed_time"] = now
 
                     # Set the path if applicable
-                    if '_path' in session_data:
-                        self._path = session_data['_path']
-                    self._increment('dd.beaker.reads.new.update')
+                    if "_path" in session_data:
+                        self._path = session_data["_path"]
+                    self._increment("dd.beaker.reads.new.update", [])
                     log.info("[{}] [session migration] [new_reads] updating session".format(rid))
                     self.update(session_data)
                     self.accessed_dict = session_data.copy()
@@ -584,74 +593,65 @@ class Session(dict):
         # Suppose to represent finding a value
         if read_value:
             log.info("[{}] [session migration] [new_reads] read_value is True, returning".format(rid))
-            self._increment("dd.beaker.reads.read_value")
+            self._increment("dd.beaker.reads.read_value", [])
             return
         # END REMOVE AFTER MIGRATION
 
         # MIGRATION NOTES: If read_value == False, that means we couldn't read a key from
         # the new keyspace, so we fall back on reading from the existing keyspace.
-        self._increment('dd.beaker.reads', ['migration:pre'])
+        self._increment("dd.beaker.reads", ["migration:pre"])
         self.namespace.acquire_read_lock()
         timed_out = False
         try:
             log.info("[{}] [session migration] [old reads] read attempt".format(rid))
-            self._increment('dd.beaker.reads.old.attempt', [])
+            self._increment("dd.beaker.reads.old.attempt", [])
             self.clear()
             try:
-                session_data = self.namespace['session']
+                session_data = self.namespace["session"]
 
-                if (session_data is not None and self.encrypt_key):
+                if session_data is not None and self.encrypt_key:
                     log.info("[{}] [session migration] [old reads] session data found".format(rid))
-                    self._increment('dd.beaker.reads.old.found', [])
+                    self._increment("dd.beaker.reads.old.found", [])
                     session_data = self._decrypt_data(session_data)
 
                 # Memcached always returns a key, its None when its not
                 # present
                 if session_data is None:
                     log.info("[{}] [session migration] [old reads] session data not found".format(rid))
-                    self._increment('dd.beaker.reads.old.not_found', ['type:session-data-none'])
-                    session_data = {
-                        '_creation_time': now,
-                        '_accessed_time': now
-                    }
+                    self._increment("dd.beaker.reads.old.not_found", ["type:session-data-none"])
+                    session_data = {"_creation_time": now, "_accessed_time": now}
                     self.is_new = True
             except (KeyError, TypeError):
                 log.info("[{}] [session migration] [old reads] key/type error".format(rid))
-                self._increment('dd.beaker.reads.old.not_found', ['type:key-type-error'])
-                session_data = {
-                    '_creation_time': now,
-                    '_accessed_time': now
-                }
+                self._increment("dd.beaker.reads.old.not_found", ["type:key-type-error"])
+                session_data = {"_creation_time": now, "_accessed_time": now}
                 self.is_new = True
 
             if session_data is None or len(session_data) == 0:
                 log.info("[{}] [session migration] [old reads] session data is none or len 0".format(rid))
-                self._increment('dd.beaker.reads.old.not_found', ['type:session-data-none-2'])
-                session_data = {
-                    '_creation_time': now,
-                    '_accessed_time': now
-                }
+                self._increment("dd.beaker.reads.old.not_found", ["type:session-data-none-2"])
+                session_data = {"_creation_time": now, "_accessed_time": now}
                 self.is_new = True
 
-            if self.timeout is not None and now - session_data['_accessed_time'] > self.timeout:
+            if self.timeout is not None and now - session_data["_accessed_time"] > self.timeout:
                 log.info("[{}] [session migration] [old reads] timeout".format(rid))
-                self._increment('dd.beaker.reads.old.timeout', [])
+                self._increment("dd.beaker.reads.old.timeout", [])
                 timed_out = True
             else:
                 log.info("[{}] [session migration] [old reads] no timeout".format(rid))
                 # Properly set the last_accessed time, which is different
                 # than the *currently* _accessed_time
-                if self.is_new or '_accessed_time' not in session_data:
+                if self.is_new or "_accessed_time" not in session_data:
                     self.last_accessed = None
                 else:
-                    self.last_accessed = session_data['_accessed_time']
+                    self.last_accessed = session_data["_accessed_time"]
 
                 # Update the current _accessed_time
-                session_data['_accessed_time'] = now
+                session_data["_accessed_time"] = now
 
                 # Set the path if applicable
-                if '_path' in session_data:
-                    self._path = session_data['_path']
+                if "_path" in session_data:
+                    self._path = session_data["_path"]
                 log.info("[{}] [session migration] [old reads] updating session".format(rid))
                 self.update(session_data)
                 self.accessed_dict = session_data.copy()
@@ -660,7 +660,6 @@ class Session(dict):
         if timed_out:
             log.info("[{}] [session migration] [old reads] timeout, invalidating session".format(rid))
             self.invalidate()
-
 
     def save(self, accessed_only=False):
         """Saves the data for this session to persistent storage
@@ -678,25 +677,24 @@ class Session(dict):
         # this session might not have a namespace yet or the session id
         # might have been regenerated
         if self.old_writes():
-            if not hasattr(self, 'namespace') or self.namespace.namespace != self.id:
+            if not hasattr(self, "namespace") or self.namespace.namespace != self.id:
                 self.namespace = self.namespace_class(
-                                        self.id,
-                                        data_dir=self.data_dir,
-                                        digest_filenames=False,
-                                        **self.namespace_args)
+                    self.id, data_dir=self.data_dir, digest_filenames=False, **self.namespace_args
+                )
 
         if self.new_writes():
-            if not hasattr(self, 'namespace2') or self.namespace2.namespace != self.id:
+            if not hasattr(self, "namespace2") or self.namespace2.namespace != self.id:
                 self.namespace2 = self.namespace_class(
                     self.id,
                     data_dir=self.data_dir,
                     column_family=self.migration_provider().column_family,
                     digest_filenames=False,
-                    **self.namespace_args)
+                    **self.namespace_args
+                )
 
         # Migration config allows writes to the original namespace to be disabled completely.
         if self.old_writes():
-            self._increment('dd.beaker.writes', ['migration:pre'])
+            self._increment("dd.beaker.writes", ["migration:pre"])
             self.namespace.acquire_write_lock(replace=True)
             try:
                 if accessed_only:
@@ -708,16 +706,16 @@ class Session(dict):
                     data = self._encrypt_data(data)
 
                 # Save the data
-                if not data and 'session' in self.namespace:
-                    del self.namespace['session']
+                if not data and "session" in self.namespace:
+                    del self.namespace["session"]
                 else:
-                    self.namespace['session'] = data
+                    self.namespace["session"] = data
             finally:
                 self.namespace.release_write_lock()
 
         # REMOVE THIS BLOCK AFTER MIGRATION
         if self.new_writes():
-            self._increment('dd.beaker.writes', ['migration:post'])
+            self._increment("dd.beaker.writes", ["migration:post"])
             self.namespace2.acquire_write_lock(replace=True)
             try:
                 if accessed_only:
@@ -729,16 +727,16 @@ class Session(dict):
                     data = self._encrypt_data(data, migration=True)
 
                 # Save the data
-                if not data and 'session' in self.namespace2:
-                    del self.namespace2['session']
+                if not data and "session" in self.namespace2:
+                    del self.namespace2["session"]
                 else:
-                    self.namespace2['session'] = data
+                    self.namespace2["session"] = data
             finally:
                 self.namespace2.release_write_lock()
         # END REMOVE THIS BLOCK AFTER MIGRATION
 
         if self.use_cookies and self.is_new:
-            self.request['set_cookie'] = True
+            self.request["set_cookie"] = True
 
     def revert(self):
         """Revert the session to its original state from its first
@@ -785,6 +783,7 @@ class Session(dict):
         if self.namespace2 is not None:
             self.namespace2.release_write_lock()
 
+
 class CookieSession(Session):
     """Pure cookie-based session
     Options recognized when using cookie-based sessions are slightly
@@ -817,19 +816,33 @@ class CookieSession(Session):
     :type invalidate_corrupt: bool
     :param crypto_type: The crypto module to use.
     """
-    def __init__(self, request, key='beaker.session.id', timeout=None,
-                 save_accessed_time=True, cookie_expires=True, cookie_domain=None,
-                 cookie_path='/', encrypt_key=None, validate_key=None, secure=False,
-                 httponly=False, data_serializer='pickle',
-                 encrypt_nonce_bits=DEFAULT_NONCE_BITS, invalidate_corrupt=False,
-                 crypto_type='default',
-                 **kwargs):
+
+    def __init__(
+        self,
+        request,
+        key="beaker.session.id",
+        timeout=None,
+        save_accessed_time=True,
+        cookie_expires=True,
+        cookie_domain=None,
+        cookie_path="/",
+        encrypt_key=None,
+        validate_key=None,
+        secure=False,
+        httponly=False,
+        data_serializer="pickle",
+        encrypt_nonce_bits=DEFAULT_NONCE_BITS,
+        invalidate_corrupt=False,
+        crypto_type="default",
+        **kwargs
+    ):
 
         self.crypto_module = get_crypto_module(crypto_type)
 
         if not self.crypto_module.has_aes and encrypt_key:
-            raise InvalidCryptoBackendError("No AES library is installed, can't generate "
-                                            "encrypted cookie-only Session.")
+            raise InvalidCryptoBackendError(
+                "No AES library is installed, can't generate " "encrypted cookie-only Session."
+            )
 
         self.request = request
         self.key = key
@@ -839,7 +852,7 @@ class CookieSession(Session):
         self.encrypt_key = encrypt_key
         self.validate_key = validate_key
         self.encrypt_nonce_size = get_nonce_size(encrypt_nonce_bits)
-        self.request['set_cookie'] = False
+        self.request["set_cookie"] = False
         self.secure = secure
         self.httponly = httponly
         self._domain = cookie_domain
@@ -848,28 +861,21 @@ class CookieSession(Session):
         self._set_serializer(data_serializer)
 
         try:
-            cookieheader = request['cookie']
+            cookieheader = request["cookie"]
         except KeyError:
-            cookieheader = ''
+            cookieheader = ""
 
         if validate_key is None:
-            raise BeakerException("No validate_key specified for Cookie only "
-                                  "Session.")
+            raise BeakerException("No validate_key specified for Cookie only " "Session.")
         if timeout and not save_accessed_time:
             raise BeakerException("timeout requires save_accessed_time")
 
         try:
-            self.cookie = SignedCookie(
-                validate_key,
-                input=cookieheader,
-            )
+            self.cookie = SignedCookie(validate_key, input=cookieheader)
         except http_cookies.CookieError:
-            self.cookie = SignedCookie(
-                validate_key,
-                input=None,
-            )
+            self.cookie = SignedCookie(validate_key, input=None)
 
-        self['_id'] = _session_id()
+        self["_id"] = _session_id()
         self.is_new = True
 
         # If we have a cookie, load it
@@ -880,20 +886,21 @@ class CookieSession(Session):
                 if cookie_data is InvalidSignature:
                     raise BeakerException("Invalid signature")
                 self.update(self._decrypt_data(cookie_data))
-                self._path = self.get('_path', '/')
+                self._path = self.get("_path", "/")
             except Exception as e:
                 if self.invalidate_corrupt:
                     util.warn(
                         "Invalidating corrupt session %s; "
                         "error was: %s.  Set invalidate_corrupt=False "
-                        "to propagate this exception." % (self.id, e))
+                        "to propagate this exception." % (self.id, e)
+                    )
                     self.invalidate()
                 else:
                     raise
 
             if self.timeout is not None:
                 now = time.time()
-                last_accessed_time = self.get('_accessed_time', now)
+                last_accessed_time = self.get("_accessed_time", now)
                 if now - last_accessed_time > self.timeout:
                     self.clear()
 
@@ -901,15 +908,17 @@ class CookieSession(Session):
             self._create_cookie()
 
     def created(self):
-        return self['_creation_time']
+        return self["_creation_time"]
+
     created = property(created)
 
     def id(self):
-        return self['_id']
+        return self["_id"]
+
     id = property(id)
 
     def _set_domain(self, domain):
-        self['_domain'] = domain
+        self["_domain"] = domain
         self._domain = domain
 
     def _get_domain(self):
@@ -918,7 +927,7 @@ class CookieSession(Session):
     domain = property(_get_domain, _set_domain)
 
     def _set_path(self, path):
-        self['_path'] = self._path = path
+        self["_path"] = self._path = path
 
     def _get_path(self):
         return self._path
@@ -937,14 +946,14 @@ class CookieSession(Session):
     def expire(self):
         """Delete the 'expires' attribute on this Session, if any."""
 
-        self.pop('_expires', None)
+        self.pop("_expires", None)
 
     def _create_cookie(self):
-        if '_creation_time' not in self:
-            self['_creation_time'] = time.time()
-        if '_id' not in self:
-            self['_id'] = _session_id()
-        self['_accessed_time'] = time.time()
+        if "_creation_time" not in self:
+            self["_creation_time"] = time.time()
+        if "_id" not in self:
+            self["_id"] = _session_id()
+        self["_accessed_time"] = time.time()
 
         val = self._encrypt_data()
         if len(val) > 4064:
@@ -952,26 +961,26 @@ class CookieSession(Session):
 
         self.cookie[self.key] = val
 
-        if '_expires' in self:
-            expires = self['_expires']
+        if "_expires" in self:
+            expires = self["_expires"]
         else:
             expires = None
         expires = self._set_cookie_expires(expires)
         if expires is not None:
-            self['_expires'] = expires
+            self["_expires"] = expires
 
-        if '_domain' in self:
-            self.cookie[self.key]['domain'] = self['_domain']
+        if "_domain" in self:
+            self.cookie[self.key]["domain"] = self["_domain"]
         elif self._domain:
-            self.cookie[self.key]['domain'] = self._domain
+            self.cookie[self.key]["domain"] = self._domain
         if self.secure:
-            self.cookie[self.key]['secure'] = True
+            self.cookie[self.key]["secure"] = True
         self._set_cookie_http_only()
 
-        self.cookie[self.key]['path'] = self.get('_path', '/')
+        self.cookie[self.key]["path"] = self.get("_path", "/")
 
-        self.request['cookie_out'] = self.cookie[self.key].output(header='')
-        self.request['set_cookie'] = True
+        self.request["cookie_out"] = self.cookie[self.key].output(header="")
+        self.request["set_cookie"] = True
 
     def delete(self):
         """Delete the cookie, and clear the session"""
@@ -982,7 +991,8 @@ class CookieSession(Session):
     def invalidate(self):
         """Clear the contents and start a new session"""
         self.clear()
-        self['_id'] = _session_id()
+        self["_id"] = _session_id()
+
 
 class SessionObject(object):
     """Session proxy/lazy creator
@@ -993,30 +1003,30 @@ class SessionObject(object):
     storage unless its actually used during the request.
 
     """
+
     def __init__(self, environ, **params):
-        self.__dict__['_params'] = params
-        self.__dict__['_environ'] = environ
-        self.__dict__['_sess'] = None
-        self.__dict__['_headers'] = {}
+        self.__dict__["_params"] = params
+        self.__dict__["_environ"] = environ
+        self.__dict__["_sess"] = None
+        self.__dict__["_headers"] = {}
 
     def _session(self):
         """Lazy initial creation of session object"""
-        if self.__dict__['_sess'] is None:
-            params = self.__dict__['_params']
-            environ = self.__dict__['_environ']
-            self.__dict__['_headers'] = req = {'cookie_out': None}
-            req['cookie'] = environ.get('HTTP_COOKIE')
-            session_cls = params.get('session_class', None)
+        if self.__dict__["_sess"] is None:
+            params = self.__dict__["_params"]
+            environ = self.__dict__["_environ"]
+            self.__dict__["_headers"] = req = {"cookie_out": None}
+            req["cookie"] = environ.get("HTTP_COOKIE")
+            session_cls = params.get("session_class", None)
             if session_cls is None:
-                if params.get('type') == 'cookie':
+                if params.get("type") == "cookie":
                     session_cls = CookieSession
                 else:
                     session_cls = Session
             else:
-                assert issubclass(session_cls, Session),\
-                    "Not a Session: " + session_cls
-            self.__dict__['_sess'] = session_cls(req, **params)
-        return self.__dict__['_sess']
+                assert issubclass(session_cls, Session), "Not a Session: " + session_cls
+            self.__dict__["_sess"] = session_cls(req, **params)
+        return self.__dict__["_sess"]
 
     def __getattr__(self, attr):
         return getattr(self._session(), attr)
@@ -1051,17 +1061,17 @@ class SessionObject(object):
 
     def get_by_id(self, id):
         """Loads a session given a session ID"""
-        params = self.__dict__['_params']
+        params = self.__dict__["_params"]
         session = Session({}, use_cookies=False, id=id, **params)
         if session.is_new:
             return None
         return session
 
     def save(self):
-        self.__dict__['_dirty'] = True
+        self.__dict__["_dirty"] = True
 
     def delete(self):
-        self.__dict__['_dirty'] = True
+        self.__dict__["_dirty"] = True
         self._session().delete()
 
     def persist(self):
@@ -1076,9 +1086,9 @@ class SessionObject(object):
         - If save_accessed_time is set to false, doesn't save anything.
 
         """
-        if self.__dict__['_params'].get('auto'):
+        if self.__dict__["_params"].get("auto"):
             self._session().save()
-        elif self.__dict__['_params'].get('save_accessed_time', True):
+        elif self.__dict__["_params"].get("save_accessed_time", True):
             if self.dirty():
                 self._session().save()
             else:
@@ -1089,8 +1099,8 @@ class SessionObject(object):
 
     def dirty(self):
         """Returns True if save() or delete() have been called"""
-        return self.__dict__.get('_dirty', False)
+        return self.__dict__.get("_dirty", False)
 
     def accessed(self):
         """Returns whether or not the session has been accessed"""
-        return self.__dict__['_sess'] is not None
+        return self.__dict__["_sess"] is not None
