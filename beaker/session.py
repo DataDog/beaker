@@ -4,6 +4,7 @@ import os
 import time
 import logging
 import random
+import string
 from datetime import datetime, timedelta
 from beaker.crypto import hmac as HMAC, hmac_sha1 as SHA1, sha1, get_nonce_size, DEFAULT_NONCE_BITS, get_crypto_module
 from beaker import crypto, util
@@ -524,7 +525,7 @@ class Session(dict):
                         pass
                     else:
                         log.info("[{}] [session migration] [new_reads] not old reads and key/type error".format(rid))
-                        self._increment('dd.beaker.reads.new.not_found', ['type:not-old-reads-error']
+                        self._increment('dd.beaker.reads.new.not_found', ['type:not-old-reads-error'])
                         # Post migration we should
                         session_data = {
                             '_creation_time': now,
@@ -594,14 +595,14 @@ class Session(dict):
         timed_out = False
         try:
             log.info("[{}] [session migration] [old reads] read attempt".format(rid))
-            self._increment('dd.beaker.reads.old.attempt')
+            self._increment('dd.beaker.reads.old.attempt', [])
             self.clear()
             try:
                 session_data = self.namespace['session']
 
                 if (session_data is not None and self.encrypt_key):
                     log.info("[{}] [session migration] [old reads] session data found".format(rid))
-                    self._increment('dd.beaker.reads.old.found')
+                    self._increment('dd.beaker.reads.old.found', [])
                     session_data = self._decrypt_data(session_data)
 
                 # Memcached always returns a key, its None when its not
@@ -634,7 +635,7 @@ class Session(dict):
 
             if self.timeout is not None and now - session_data['_accessed_time'] > self.timeout:
                 log.info("[{}] [session migration] [old reads] timeout".format(rid))
-                self._increment('dd.beaker.reads.old.timeout')
+                self._increment('dd.beaker.reads.old.timeout', [])
                 timed_out = True
             else:
                 log.info("[{}] [session migration] [old reads] no timeout".format(rid))
