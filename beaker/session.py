@@ -3,8 +3,6 @@ from ._compat import PY2, pickle, http_cookies, unicode_text, b64encode, b64deco
 import os
 import time
 import logging
-import random
-import string
 from datetime import datetime, timedelta
 from beaker.crypto import hmac as HMAC, hmac_sha1 as SHA1, sha1, get_nonce_size, DEFAULT_NONCE_BITS, get_crypto_module
 from beaker import crypto, util
@@ -502,14 +500,12 @@ class Session(dict):
         if self.use_cookies:
             self.request["set_cookie"] = True
 
-        rid = "".join(random.choice(string.ascii_letters + string.digits) for _ in range(12))
-
         timed_out = False
         read_value = False
         session_data = None
         # REMOVE AFTER MIGRATION - Attempt to read from the new backend
         if self.new_reads():  # TRUE > [READS, POST]
-            log.info("[{}] [session migration] [new_reads] read attempt".format(rid))
+            log.info("[session migration] [new_reads] read attempt")
             self._increment("dd.beaker.reads.new.attempt", [])
             self.namespace2.acquire_read_lock()
             try:
@@ -517,11 +513,11 @@ class Session(dict):
                 try:
                     session_data = self.namespace2["session"]
                     if session_data is not None and self.encrypt_key:
-                        log.info("[{}] [session migration] [new_reads] session found".format(rid))
+                        log.info("[session migration] [new_reads] session found")
                         self._increment("dd.beaker.reads.new.found", [])
                         session_data = self._decrypt_data(session_data, migration=True)
                     elif not self.old_reads():  # self.old_reads == True
-                        log.info("[{}] [session migration] [new_reads] not old reads and session not found".format(rid))
+                        log.info("[session migration] [new_reads] not old reads and session not found")
                         self._increment("dd.beaker.reads.new.not_found", ["type:post-migration"])
 
                         # Memcached always returns a key, its None when its not present
@@ -532,12 +528,12 @@ class Session(dict):
                 except (KeyError, TypeError):
                     session_data = None
                     if self.old_reads():
-                        log.info("[{}] [session migration] [new_reads] old reads and key/type error".format(rid))
+                        log.info("[session migration] [new_reads] old reads and key/type error")
                         self._increment("dd.beaker.reads.new.not_found", ["type:old-reads-error"])
                         # We still have another backend we could be reading from, so don't create new sessions here
                         pass
                     else:
-                        log.info("[{}] [session migration] [new_reads] not old reads and key/type error".format(rid))
+                        log.info("[session migration] [new_reads] not old reads and key/type error")
                         self._increment("dd.beaker.reads.new.not_found", ["type:not-old-reads-error"])
                         # Post migration we should
                         session_data = {"_creation_time": now, "_accessed_time": now}
@@ -546,7 +542,7 @@ class Session(dict):
 
                 if not self.old_reads() and (session_data is None or len(session_data) == 0):
                     log.info(
-                        "[{}] [session migration] [new_reads] not old reads and session is none or len 0".format(rid)
+                        "[session migration] [new_reads] not old reads and session is none or len 0"
                     )
                     self._increment("dd.beaker.reads.new.not_found", ["type:not-old-reads-no-session-data"])
                     session_data = {"_creation_time": now, "_accessed_time": now}
@@ -555,16 +551,16 @@ class Session(dict):
 
                 # Only consider the case where we successfully read a session
                 if session_data is None or len(session_data) == 0:
-                    log.info("[{}] [session migration] [new_reads] session is none or len 0".format(rid))
+                    log.info("[session migration] [new_reads] session is none or len 0")
                     self._increment("dd.beaker.reads.new.not_found", ["type:no-session-data"])
                     pass
                 elif self.timeout is not None and now - session_data["_accessed_time"] > self.timeout:
-                    log.info("[{}] [session migration] [new_reads] session is not None and timeout".format(rid))
+                    log.info("[session migration] [new_reads] session is not None and timeout")
                     self._increment("dd.beaker.reads.new.timeout", [])
                     timed_out = True
                     read_value = True
                 else:
-                    log.info("[{}] [session migration] [new_reads] session is not None and no timeout".format(rid))
+                    log.info("[session migration] [new_reads] session is not None and no timeout")
                     read_value = True
                     # Properly set the last_accessed time, which is different
                     # than the *currently* _accessed_time
@@ -580,19 +576,19 @@ class Session(dict):
                     if "_path" in session_data:
                         self._path = session_data["_path"]
                     self._increment("dd.beaker.reads.new.update", [])
-                    log.info("[{}] [session migration] [new_reads] updating session".format(rid))
+                    log.info("[session migration] [new_reads] updating session")
                     self.update(session_data)
                     self.accessed_dict = session_data.copy()
             finally:
                 self.namespace2.release_read_lock()
 
             if timed_out:
-                log.info("[{}] [session migration] [new_reads] timeout, invalidating session".format(rid))
+                log.info("[session migration] [new_reads] timeout, invalidating session")
                 self.invalidate()
 
         # Suppose to represent finding a value
         if read_value:
-            log.info("[{}] [session migration] [new_reads] read_value is True, returning".format(rid))
+            log.info("[session migration] [new_reads] read_value is True, returning")
             self._increment("dd.beaker.reads.read_value", [])
             return
         # END REMOVE AFTER MIGRATION
@@ -603,42 +599,42 @@ class Session(dict):
         self.namespace.acquire_read_lock()
         timed_out = False
         try:
-            log.info("[{}] [session migration] [old reads] read attempt".format(rid))
+            log.info("[session migration] [old reads] read attempt")
             self._increment("dd.beaker.reads.old.attempt", [])
             self.clear()
             try:
                 session_data = self.namespace["session"]
 
                 if session_data is not None and self.encrypt_key:
-                    log.info("[{}] [session migration] [old reads] session data found".format(rid))
+                    log.info("[session migration] [old reads] session data found")
                     self._increment("dd.beaker.reads.old.found", [])
                     session_data = self._decrypt_data(session_data)
 
                 # Memcached always returns a key, its None when its not
                 # present
                 if session_data is None:
-                    log.info("[{}] [session migration] [old reads] session data not found".format(rid))
+                    log.info("[session migration] [old reads] session data not found")
                     self._increment("dd.beaker.reads.old.not_found", ["type:session-data-none"])
                     session_data = {"_creation_time": now, "_accessed_time": now}
                     self.is_new = True
             except (KeyError, TypeError):
-                log.info("[{}] [session migration] [old reads] key/type error".format(rid))
+                log.info("[session migration] [old reads] key/type error")
                 self._increment("dd.beaker.reads.old.not_found", ["type:key-type-error"])
                 session_data = {"_creation_time": now, "_accessed_time": now}
                 self.is_new = True
 
             if session_data is None or len(session_data) == 0:
-                log.info("[{}] [session migration] [old reads] session data is none or len 0".format(rid))
+                log.info("[session migration] [old reads] session data is none or len 0")
                 self._increment("dd.beaker.reads.old.not_found", ["type:session-data-none-2"])
                 session_data = {"_creation_time": now, "_accessed_time": now}
                 self.is_new = True
 
             if self.timeout is not None and now - session_data["_accessed_time"] > self.timeout:
-                log.info("[{}] [session migration] [old reads] timeout".format(rid))
+                log.info("[session migration] [old reads] timeout")
                 self._increment("dd.beaker.reads.old.timeout", [])
                 timed_out = True
             else:
-                log.info("[{}] [session migration] [old reads] no timeout".format(rid))
+                log.info("[session migration] [old reads] no timeout")
                 # Properly set the last_accessed time, which is different
                 # than the *currently* _accessed_time
                 if self.is_new or "_accessed_time" not in session_data:
@@ -652,13 +648,13 @@ class Session(dict):
                 # Set the path if applicable
                 if "_path" in session_data:
                     self._path = session_data["_path"]
-                log.info("[{}] [session migration] [old reads] updating session".format(rid))
+                log.info("[session migration] [old reads] updating session")
                 self.update(session_data)
                 self.accessed_dict = session_data.copy()
         finally:
             self.namespace.release_read_lock()
         if timed_out:
-            log.info("[{}] [session migration] [old reads] timeout, invalidating session".format(rid))
+            log.info("[session migration] [old reads] timeout, invalidating session")
             self.invalidate()
 
     def save(self, accessed_only=False):
