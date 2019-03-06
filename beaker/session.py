@@ -511,6 +511,8 @@ class Session(dict):
             try:
                 self.clear()
                 try:
+                    # This cannot KeyError because dogweb.lib.beaker_wrapper
+                    # swallows the error
                     session_data = self.namespace2["session"]
                     if session_data is not None and self.encrypt_key:
                         log.info("[session migration] [new_reads] session found")
@@ -526,6 +528,7 @@ class Session(dict):
                         read_value = True
 
                 except (KeyError, TypeError):
+                    # NEVER EVER GET HERE
                     session_data = None
                     if self.old_reads():
                         log.info("[session migration] [new_reads] old reads and key/type error")
@@ -549,12 +552,15 @@ class Session(dict):
                     self.is_new = True
                     read_value = True
 
-                # Only consider the case where we successfully read a session
+                # we did not find a session, create one
                 if session_data is None or len(session_data) == 0:
                     log.info("[session migration] [new_reads] session is none or len 0")
                     self._increment("dd.beaker.reads.new.not_found", ["type:no-session-data"])
-                    pass
-                elif self.timeout is not None and now - session_data["_accessed_time"] > self.timeout:
+                    session_data = {"_creation_time": now, "_accessed_time": now}
+                    self.is_new = True
+                    read_value = True
+
+                if self.timeout is not None and now - session_data["_accessed_time"] > self.timeout:
                     log.info("[session migration] [new_reads] session is not None and timeout")
                     self._increment("dd.beaker.reads.new.timeout", [])
                     timed_out = True
