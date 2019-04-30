@@ -83,13 +83,15 @@ class _backends(object):
             import pkg_resources
 
             # Load up the additional entry point defined backends
-            for entry_point in pkg_resources.iter_entry_points('beaker.backends'):
+            for entry_point in pkg_resources.iter_entry_points("beaker.backends"):
                 try:
                     namespace_manager = entry_point.load()
                     name = entry_point.name
                     if name in self._clsmap:
-                        raise BeakerException("NamespaceManager name conflict,'%s' "
-                                              "already loaded" % name)
+                        raise BeakerException(
+                            "NamespaceManager name conflict,'%s' "
+                            "already loaded" % name
+                        )
                     self._clsmap[name] = namespace_manager
                 except (InvalidCacheBackendError, SyntaxError):
                     # Ignore invalid backends
@@ -97,37 +99,42 @@ class _backends(object):
                 except:
                     import sys
                     from pkg_resources import DistributionNotFound
+
                     # Warn when there's a problem loading a NamespaceManager
                     if not isinstance(sys.exc_info()[1], DistributionNotFound):
                         import traceback
+
                         try:
                             from StringIO import StringIO  # Python2
                         except ImportError:
-                            from io import StringIO        # Python3
+                            from io import StringIO  # Python3
 
                         tb = StringIO()
                         traceback.print_exc(file=tb)
                         warnings.warn(
                             "Unable to load NamespaceManager "
-                            "entry point: '%s': %s" % (
-                                        entry_point,
-                                        tb.getvalue()),
-                                        RuntimeWarning, 2)
+                            "entry point: '%s': %s" % (entry_point, tb.getvalue()),
+                            RuntimeWarning,
+                            2,
+                        )
         except ImportError:
             pass
 
+
 # Initialize the basic available backends
-clsmap = _backends({
-    'memory': container.MemoryNamespaceManager,
-    'dbm': container.DBMNamespaceManager,
-    'file': container.FileNamespaceManager,
-    'ext:memcached': memcached.MemcachedNamespaceManager,
-    'ext:database': database.DatabaseNamespaceManager,
-    'ext:sqla': sqla.SqlaNamespaceManager,
-    'ext:google': google.GoogleNamespaceManager,
-    'ext:mongodb': mongodb.MongoNamespaceManager,
-    'ext:redis': redisnm.RedisNamespaceManager
-})
+clsmap = _backends(
+    {
+        "memory": container.MemoryNamespaceManager,
+        "dbm": container.DBMNamespaceManager,
+        "file": container.FileNamespaceManager,
+        "ext:memcached": memcached.MemcachedNamespaceManager,
+        "ext:database": database.DatabaseNamespaceManager,
+        "ext:sqla": sqla.SqlaNamespaceManager,
+        "ext:google": google.GoogleNamespaceManager,
+        "ext:mongodb": mongodb.MongoNamespaceManager,
+        "ext:redis": redisnm.RedisNamespaceManager,
+    }
+)
 
 
 def cache_region(region, *args):
@@ -261,15 +268,14 @@ def region_invalidate(namespace, region, *args):
         namespace = namespace._arg_namespace
 
     if not region:
-        raise BeakerException("Region or callable function "
-                                    "namespace is required")
+        raise BeakerException("Region or callable function " "namespace is required")
     else:
         region = cache_regions[region]
 
     cache = Cache._get_cache(namespace, region)
-    _cache_decorator_invalidate(cache,
-                                region.get('key_length', util.DEFAULT_CACHE_KEY_LENGTH),
-                                args)
+    _cache_decorator_invalidate(
+        cache, region.get("key_length", util.DEFAULT_CACHE_KEY_LENGTH), args
+    )
 
 
 class Cache(object):
@@ -286,8 +292,16 @@ class Cache(object):
     :param starttime: time when cache was cache was
 
     """
-    def __init__(self, namespace, type='memory', expiretime=None,
-                 starttime=None, expire=None, **nsargs):
+
+    def __init__(
+        self,
+        namespace,
+        type="memory",
+        expiretime=None,
+        starttime=None,
+        expire=None,
+        **nsargs
+    ):
         try:
             cls = clsmap[type]
             if isinstance(cls, InvalidCacheBackendError):
@@ -315,43 +329,49 @@ class Cache(object):
 
     def put(self, key, value, **kw):
         self._get_value(key, **kw).set_value(value)
+
     set_value = put
 
     def get(self, key, **kw):
         """Retrieve a cached value from the container"""
         return self._get_value(key, **kw).get_value()
+
     get_value = get
 
     def remove_value(self, key, **kw):
         mycontainer = self._get_value(key, **kw)
         mycontainer.clear_value()
+
     remove = remove_value
 
     def _get_value(self, key, **kw):
         if isinstance(key, unicode_text):
-            key = key.encode('ascii', 'backslashreplace')
+            key = key.encode("ascii", "backslashreplace")
 
-        if 'type' in kw:
+        if "type" in kw:
             return self._legacy_get_value(key, **kw)
 
-        kw.setdefault('expiretime', self.expiretime)
-        kw.setdefault('starttime', self.starttime)
+        kw.setdefault("expiretime", self.expiretime)
+        kw.setdefault("starttime", self.starttime)
 
         return container.Value(key, self.namespace, **kw)
 
-    @util.deprecated("Specifying a "
-            "'type' and other namespace configuration with cache.get()/put()/etc. "
-            "is deprecated. Specify 'type' and other namespace configuration to "
-            "cache_manager.get_cache() and/or the Cache constructor instead.")
+    @util.deprecated(
+        "Specifying a "
+        "'type' and other namespace configuration with cache.get()/put()/etc. "
+        "is deprecated. Specify 'type' and other namespace configuration to "
+        "cache_manager.get_cache() and/or the Cache constructor instead."
+    )
     def _legacy_get_value(self, key, type, **kw):
-        expiretime = kw.pop('expiretime', self.expiretime)
-        starttime = kw.pop('starttime', None)
-        createfunc = kw.pop('createfunc', None)
+        expiretime = kw.pop("expiretime", self.expiretime)
+        starttime = kw.pop("starttime", None)
+        createfunc = kw.pop("createfunc", None)
         kwargs = self.nsargs.copy()
         kwargs.update(kw)
         c = Cache(self.namespace.namespace, type=type, **kwargs)
-        return c._get_value(key, expiretime=expiretime, createfunc=createfunc,
-                            starttime=starttime)
+        return c._get_value(
+            key, expiretime=expiretime, createfunc=createfunc, starttime=starttime
+        )
 
     def clear(self):
         """Clear all the values from the namespace"""
@@ -384,7 +404,7 @@ class CacheManager(object):
 
         """
         self.kwargs = kwargs
-        self.regions = kwargs.pop('cache_regions', {})
+        self.regions = kwargs.pop("cache_regions", {})
 
         # Add these regions to the module global
         cache_regions.update(self.regions)
@@ -396,7 +416,7 @@ class CacheManager(object):
 
     def get_cache_region(self, name, region):
         if region not in self.regions:
-            raise BeakerException('Cache region not configured: %s' % region)
+            raise BeakerException("Cache region not configured: %s" % region)
         kw = self.regions[region]
         return Cache._get_cache(name, kw)
 
@@ -534,11 +554,11 @@ class CacheManager(object):
         namespace = func._arg_namespace
 
         cache = self.get_cache(namespace, **kwargs)
-        if hasattr(func, '_arg_region'):
+        if hasattr(func, "_arg_region"):
             cachereg = cache_regions[func._arg_region]
-            key_length = cachereg.get('key_length', util.DEFAULT_CACHE_KEY_LENGTH)
+            key_length = cachereg.get("key_length", util.DEFAULT_CACHE_KEY_LENGTH)
         else:
-            key_length = kwargs.pop('key_length', util.DEFAULT_CACHE_KEY_LENGTH)
+            key_length = kwargs.pop("key_length", util.DEFAULT_CACHE_KEY_LENGTH)
         _cache_decorator_invalidate(cache, key_length, args)
 
 
@@ -558,49 +578,57 @@ def _cache_decorate(deco_args, manager, options, region):
                 if region is not None:
                     if region not in cache_regions:
                         raise BeakerException(
-                            'Cache region not configured: %s' % region)
+                            "Cache region not configured: %s" % region
+                        )
                     reg = cache_regions[region]
-                    if not reg.get('enabled', True):
+                    if not reg.get("enabled", True):
                         return func(*args, **kwargs)
                     cache[0] = Cache._get_cache(namespace, reg)
                 elif manager:
                     cache[0] = manager.get_cache(namespace, **options)
                 else:
-                    raise Exception("'manager + kwargs' or 'region' "
-                                    "argument is required")
+                    raise Exception(
+                        "'manager + kwargs' or 'region' " "argument is required"
+                    )
 
             cache_key_kwargs = []
             if kwargs:
                 # kwargs provided, merge them in positional args
                 # to avoid having different cache keys.
                 args, kwargs = bindfuncargs(signature, args, kwargs)
-                cache_key_kwargs = [u_(':').join((u_(key), u_(value))) for key, value in kwargs.items()]
+                cache_key_kwargs = [
+                    u_(":").join((u_(key), u_(value))) for key, value in kwargs.items()
+                ]
 
             cache_key_args = args
             if skip_self:
                 cache_key_args = args[1:]
 
-            cache_key = u_(" ").join(map(u_, chain(deco_args, cache_key_args, cache_key_kwargs)))
+            cache_key = u_(" ").join(
+                map(u_, chain(deco_args, cache_key_args, cache_key_kwargs))
+            )
 
             if region:
                 cachereg = cache_regions[region]
-                key_length = cachereg.get('key_length', util.DEFAULT_CACHE_KEY_LENGTH)
+                key_length = cachereg.get("key_length", util.DEFAULT_CACHE_KEY_LENGTH)
             else:
-                key_length = options.pop('key_length', util.DEFAULT_CACHE_KEY_LENGTH)
+                key_length = options.pop("key_length", util.DEFAULT_CACHE_KEY_LENGTH)
 
             # TODO: This is probably a bug as length is checked before converting to UTF8
             # which will cause cache_key to grow in size.
             if len(cache_key) + len(namespace) > int(key_length):
-                cache_key = sha1(cache_key.encode('utf-8')).hexdigest()
+                cache_key = sha1(cache_key.encode("utf-8")).hexdigest()
 
             def go():
                 return func(*args, **kwargs)
 
             return cache[0].get_value(cache_key, createfunc=go)
+
         cached._arg_namespace = namespace
         if region is not None:
             cached._arg_region = region
         return cached
+
     return decorate
 
 
@@ -609,5 +637,5 @@ def _cache_decorator_invalidate(cache, key_length, args):
 
     cache_key = u_(" ").join(map(u_, args))
     if len(cache_key) + len(cache.namespace_name) > key_length:
-        cache_key = sha1(cache_key.encode('utf-8')).hexdigest()
+        cache_key = sha1(cache_key.encode("utf-8")).hexdigest()
     cache.remove_value(cache_key)

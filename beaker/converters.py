@@ -5,13 +5,12 @@ from beaker._compat import string_type
 def asbool(obj):
     if isinstance(obj, string_type):
         obj = obj.strip().lower()
-        if obj in ['true', 'yes', 'on', 'y', 't', '1']:
+        if obj in ["true", "yes", "on", "y", "t", "1"]:
             return True
-        elif obj in ['false', 'no', 'off', 'n', 'f', '0']:
+        elif obj in ["false", "no", "off", "n", "f", "0"]:
             return False
         else:
-            raise ValueError(
-                "String is not true/false: %r" % obj)
+            raise ValueError("String is not true/false: %r" % obj)
     return bool(obj)
 
 

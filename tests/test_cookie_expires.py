@@ -4,31 +4,52 @@ from nose.tools import *
 import datetime
 import re
 
+
 def test_cookie_expires():
     """Explore valid arguments for cookie_expires."""
+
     def app(*args, **kw):
         pass
 
-    key = 'beaker.session.cookie_expires'
+    key = "beaker.session.cookie_expires"
     now = datetime.datetime.now()
 
-    values = ['300', 300,
-        True,  'True',  'true',  't',
-        False, 'False', 'false', 'f',
-        datetime.timedelta(minutes=5), now]
+    values = [
+        "300",
+        300,
+        True,
+        "True",
+        "true",
+        "t",
+        False,
+        "False",
+        "false",
+        "f",
+        datetime.timedelta(minutes=5),
+        now,
+    ]
 
-    expected = [datetime.timedelta(seconds=300),
-            datetime.timedelta(seconds=300), 
-            True, True, True, True,
-            False, False, False, False,
-            datetime.timedelta(minutes=5), now]
+    expected = [
+        datetime.timedelta(seconds=300),
+        datetime.timedelta(seconds=300),
+        True,
+        True,
+        True,
+        True,
+        False,
+        False,
+        False,
+        False,
+        datetime.timedelta(minutes=5),
+        now,
+    ]
 
     actual = []
 
     for pos, v in enumerate(values):
         try:
-            s = SessionMiddleware(app, config={key:v})
-            val = s.options['cookie_expires']
+            s = SessionMiddleware(app, config={key: v})
+            val = s.options["cookie_expires"]
         except:
             val = None
         assert_equal(val, expected[pos])
@@ -36,12 +57,14 @@ def test_cookie_expires():
 
 def cookie_expiration(session):
     cookie = session.cookie.output()
-    expiry_m = re.match('Set-Cookie: beaker.session.id=[0-9a-f]{32}(; expires=[^;]+)?; Path=/', cookie)
+    expiry_m = re.match(
+        "Set-Cookie: beaker.session.id=[0-9a-f]{32}(; expires=[^;]+)?; Path=/", cookie
+    )
     assert expiry_m
     expiry = expiry_m.group(1)
     if expiry is None:
         return True
-    if re.match('; expires=(Mon|Tue), 1[89]-Jan-2038 [0-9:]{8} GMT', expiry):
+    if re.match("; expires=(Mon|Tue), 1[89]-Jan-2038 [0-9:]{8} GMT", expiry):
         return False
     else:
         return expiry[10:]

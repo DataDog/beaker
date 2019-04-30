@@ -4,9 +4,7 @@ import os
 import json
 
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.ciphers import (
-    Cipher, algorithms, modes
-)
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 
 def aesEncrypt(data, key):
@@ -16,9 +14,7 @@ def aesEncrypt(data, key):
     # Construct an AES-GCM Cipher object with the given key and a
     # randomly generated IV.
     encryptor = Cipher(
-        algorithms.AES(key),
-        modes.GCM(iv),
-        backend=default_backend()
+        algorithms.AES(key), modes.GCM(iv), backend=default_backend()
     ).encryptor()
 
     # Encrypt the plaintext and get the associated ciphertext.
@@ -36,9 +32,7 @@ def aesDecrypt(data, key):
     # Construct a Cipher object, with the key, iv, and additionally the
     # GCM tag used for authenticating the message.
     decryptor = Cipher(
-        algorithms.AES(key),
-        modes.GCM(iv, tag),
-        backend=default_backend()
+        algorithms.AES(key), modes.GCM(iv, tag), backend=default_backend()
     ).decryptor()
 
     # Decryption gets us the authenticated plaintext.
@@ -47,6 +41,7 @@ def aesDecrypt(data, key):
 
 
 has_aes = True
+
 
 def getKeyLength():
     return 32

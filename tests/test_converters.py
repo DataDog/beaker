@@ -6,13 +6,13 @@ from beaker.converters import asbool, aslist
 
 class AsBool(unittest.TestCase):
     def test_truth_str(self):
-        for v in ('true', 'yes', 'on', 'y', 't', '1'):
+        for v in ("true", "yes", "on", "y", "t", "1"):
             self.assertTrue(asbool(v), "%s should be considered True" % (v,))
             v = v.upper()
             self.assertTrue(asbool(v), "%s should be considered True" % (v,))
 
     def test_false_str(self):
-        for v in ('false', 'no', 'off', 'n', 'f', '0'):
+        for v in ("false", "no", "off", "n", "f", "0"):
             self.assertFalse(asbool(v), v)
             v = v.upper()
             self.assertFalse(asbool(v), v)
@@ -26,14 +26,14 @@ class AsBool(unittest.TestCase):
         self.assertFalse(asbool(0))
 
     def test_bad_values(self):
-        self.assertRaises(ValueError, asbool, ('mommy!'))
-        self.assertRaises(ValueError, asbool, (u_('Blargl?')))
+        self.assertRaises(ValueError, asbool, ("mommy!"))
+        self.assertRaises(ValueError, asbool, (u_("Blargl?")))
 
 
 class AsList(unittest.TestCase):
     def test_string(self):
-        self.assertEqual(aslist('abc'), ['abc'])
-        self.assertEqual(aslist('1a2a3', 'a'), ['1', '2', '3'])
+        self.assertEqual(aslist("abc"), ["abc"])
+        self.assertEqual(aslist("1a2a3", "a"), ["1", "2", "3"])
 
     def test_None(self):
         self.assertEqual(aslist(None), [])
@@ -42,7 +42,7 @@ class AsList(unittest.TestCase):
         """Lists and tuples should come back unchanged."""
         x = [1, 2, 3]
         self.assertEqual(aslist(x), x)
-        y = ('z', 'y', 'x')
+        y = ("z", "y", "x")
         self.assertEqual(aslist(y), y)
 
     def test_listify(self):
@@ -50,6 +50,5 @@ class AsList(unittest.TestCase):
         self.assertEqual(aslist(dict()), [{}])
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
-

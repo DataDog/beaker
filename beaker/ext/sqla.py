@@ -27,11 +27,11 @@ class SqlaNamespaceManager(OpenResourceNamespaceManager):
         try:
             import sqlalchemy as sa
         except ImportError:
-            raise InvalidCacheBackendError("SQLAlchemy, which is required by "
-                                            "this backend, is not installed")
+            raise InvalidCacheBackendError(
+                "SQLAlchemy, which is required by " "this backend, is not installed"
+            )
 
-    def __init__(self, namespace, bind, table, data_dir=None, lock_dir=None,
-                 **kwargs):
+    def __init__(self, namespace, bind, table, data_dir=None, lock_dir=None, **kwargs):
         """Create a namespace manager for use with a database table via
         SQLAlchemy.
 
@@ -52,8 +52,9 @@ class SqlaNamespaceManager(OpenResourceNamespaceManager):
             verify_directory(self.lock_dir)
 
         self.bind = self.__class__.binds.get(str(bind.url), lambda: bind)
-        self.table = self.__class__.tables.get('%s:%s' % (bind.url, table.name),
-                                               lambda: table)
+        self.table = self.__class__.tables.get(
+            "%s:%s" % (bind.url, table.name), lambda: table
+        )
         self.hash = {}
         self._is_new = False
         self.loaded = False
@@ -64,14 +65,16 @@ class SqlaNamespaceManager(OpenResourceNamespaceManager):
     def get_creation_lock(self, key):
         return file_synchronizer(
             identifier="databasecontainer/funclock/%s" % self.namespace,
-            lock_dir=self.lock_dir)
+            lock_dir=self.lock_dir,
+        )
 
     def do_open(self, flags, replace):
         if self.loaded:
             self.flags = flags
             return
-        select = sa.select([self.table.c.data],
-                           (self.table.c.namespace == self.namespace))
+        select = sa.select(
+            [self.table.c.data], (self.table.c.namespace == self.namespace)
+        )
         result = self.bind.execute(select).fetchone()
         if not result:
             self._is_new = True
@@ -79,9 +82,8 @@ class SqlaNamespaceManager(OpenResourceNamespaceManager):
         else:
             self._is_new = False
             try:
-                self.hash = result['data']
-            except (IOError, OSError, EOFError, pickle.PickleError,
-                    pickle.PickleError):
+                self.hash = result["data"]
+            except (IOError, OSError, EOFError, pickle.PickleError, pickle.PickleError):
                 log.debug("Couln't load pickle data, creating new storage")
                 self.hash = {}
                 self._is_new = True
@@ -89,11 +91,16 @@ class SqlaNamespaceManager(OpenResourceNamespaceManager):
         self.loaded = True
 
     def do_close(self):
-        if self.flags is not None and (self.flags == 'c' or self.flags == 'w'):
+        if self.flags is not None and (self.flags == "c" or self.flags == "w"):
             if self._is_new:
                 insert = self.table.insert()
-                self.bind.execute(insert, namespace=self.namespace, data=self.hash,
-                                  accessed=datetime.now(), created=datetime.now())
+                self.bind.execute(
+                    insert,
+                    namespace=self.namespace,
+                    data=self.hash,
+                    accessed=datetime.now(),
+                    created=datetime.now(),
+                )
                 self._is_new = False
             else:
                 update = self.table.update(self.table.c.namespace == self.namespace)
@@ -126,12 +133,15 @@ class SqlaContainer(Container):
     namespace_manager = SqlaNamespaceManager
 
 
-def make_cache_table(metadata, table_name='beaker_cache', schema_name=None):
+def make_cache_table(metadata, table_name="beaker_cache", schema_name=None):
     """Return a ``Table`` object suitable for storing cached values for the
     namespace manager.  Do not create the table."""
-    return sa.Table(table_name, metadata,
-                    sa.Column('namespace', sa.String(255), primary_key=True),
-                    sa.Column('accessed', sa.DateTime, nullable=False),
-                    sa.Column('created', sa.DateTime, nullable=False),
-                    sa.Column('data', sa.PickleType, nullable=False),
-                    schema=schema_name if schema_name else metadata.schema)
+    return sa.Table(
+        table_name,
+        metadata,
+        sa.Column("namespace", sa.String(255), primary_key=True),
+        sa.Column("accessed", sa.DateTime, nullable=False),
+        sa.Column("created", sa.DateTime, nullable=False),
+        sa.Column("data", sa.PickleType, nullable=False),
+        schema=schema_name if schema_name else metadata.schema,
+    )

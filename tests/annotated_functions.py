@@ -8,8 +8,8 @@ on current python version.
 from beaker.cache import cache_region
 import time
 
+
 class AnnotatedAlfredCacher(object):
-    @cache_region('short_term')
+    @cache_region("short_term")
     def alfred_self(self, xx: int, y=None) -> str:
         return str(time.time()) + str(self) + str(xx) + str(y)
-

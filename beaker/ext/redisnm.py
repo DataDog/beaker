@@ -26,6 +26,7 @@ class RedisNamespaceManager(NamespaceManager):
     a specific database number if you don't want to mix them
     with your own data.
     """
+
     MAX_KEY_LENGTH = 1024
 
     clients = SyncDict()
@@ -35,21 +36,25 @@ class RedisNamespaceManager(NamespaceManager):
         self.lock_dir = None  # Redis uses redis itself for locking.
 
         if redis is None:
-            raise RuntimeError('redis is not available')
+            raise RuntimeError("redis is not available")
 
         if isinstance(url, string_type):
-            self.client = RedisNamespaceManager.clients.get(url, redis.StrictRedis.from_url, url)
+            self.client = RedisNamespaceManager.clients.get(
+                url, redis.StrictRedis.from_url, url
+            )
         else:
             self.client = url
 
     def _format_key(self, key):
         if not isinstance(key, str):
-            key = key.decode('ascii')
-        if len(key) > (self.MAX_KEY_LENGTH - len(self.namespace) - len('beaker_cache:') - 1):
+            key = key.decode("ascii")
+        if len(key) > (
+            self.MAX_KEY_LENGTH - len(self.namespace) - len("beaker_cache:") - 1
+        ):
             if not PY2:
-                key = key.encode('utf-8')
+                key = key.encode("utf-8")
             key = sha1(key).hexdigest()
-        return 'beaker_cache:%s:%s' % (self.namespace, key)
+        return "beaker_cache:%s:%s" % (self.namespace, key)
 
     def get_creation_lock(self, key):
         return RedisSynchronizer(self._format_key(key), self.client)
@@ -84,7 +89,7 @@ class RedisNamespaceManager(NamespaceManager):
             self.client.delete(k)
 
     def keys(self):
-        return self.client.keys('beaker_cache:%s:*' % self.namespace)
+        return self.client.keys("beaker_cache:%s:*" % self.namespace)
 
 
 class RedisSynchronizer(SynchronizerImpl):
@@ -95,6 +100,7 @@ class RedisSynchronizer(SynchronizerImpl):
 
     This Synchronizer only supports 1 reader or 1 writer at time, not concurrent readers.
     """
+
     # If a cache entry generation function can take a lot,
     # but 15 minutes is more than a reasonable time.
     LOCK_EXPIRATION = 900
@@ -102,16 +108,19 @@ class RedisSynchronizer(SynchronizerImpl):
 
     def __init__(self, identifier, url):
         super(RedisSynchronizer, self).__init__()
-        self.identifier = 'beaker_lock:%s' % identifier
+        self.identifier = "beaker_lock:%s" % identifier
         if isinstance(url, string_type):
-            self.client = RedisNamespaceManager.clients.get(url, redis.StrictRedis.from_url, url)
+            self.client = RedisNamespaceManager.clients.get(
+                url, redis.StrictRedis.from_url, url
+            )
         else:
             self.client = url
 
     def _get_owner_id(self):
         return (
-            '%s-%s-%s' % (self.MACHINE_ID, os.getpid(), threading.current_thread().ident)
-        ).encode('ascii')
+            "%s-%s-%s"
+            % (self.MACHINE_ID, os.getpid(), threading.current_thread().ident)
+        ).encode("ascii")
 
     def do_release_read_lock(self):
         self.do_release_write_lock()
@@ -122,10 +131,12 @@ class RedisSynchronizer(SynchronizerImpl):
     def do_release_write_lock(self):
         identifier = self.identifier
         owner_id = self._get_owner_id()
+
         def execute_release(pipe):
             lock_value = pipe.get(identifier)
             if lock_value == owner_id:
                 pipe.delete(identifier)
+
         self.client.transaction(execute_release, identifier)
 
     def do_acquire_write_lock(self, wait):
@@ -138,4 +149,3 @@ class RedisSynchronizer(SynchronizerImpl):
             if not wait:
                 return False
             time.sleep(0.2)
-
