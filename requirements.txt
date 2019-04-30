@@ -1,0 +1,8 @@
+nose
+cryptography
+pycrypto
+pycryptodome
+webtest
+mock
+redis
+pymongo

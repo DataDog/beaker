@@ -16,26 +16,30 @@ from javax.crypto.spec import SecretKeySpec, IvParameterSpec
 import jarray
 
 # Initialization vector filled with zeros
-_iv = IvParameterSpec(jarray.zeros(16, 'b'))
+_iv = IvParameterSpec(jarray.zeros(16, "b"))
 
 
 def aesEncrypt(data, key):
-    cipher = Cipher.getInstance('AES/CTR/NoPadding')
-    skeySpec = SecretKeySpec(key, 'AES')
+    cipher = Cipher.getInstance("AES/CTR/NoPadding")
+    skeySpec = SecretKeySpec(key, "AES")
     cipher.init(Cipher.ENCRYPT_MODE, skeySpec, _iv)
     return cipher.doFinal(data).tostring()
+
 
 # magic.
 aesDecrypt = aesEncrypt
 
 has_aes = True
 
+
 def getKeyLength():
-    maxlen = Cipher.getMaxAllowedKeyLength('AES/CTR/NoPadding')
+    maxlen = Cipher.getMaxAllowedKeyLength("AES/CTR/NoPadding")
     return min(maxlen, 256) / 8
 
 
 if getKeyLength() < 32:
-    warn('Crypto implementation only supports key lengths up to %d bits. '
-         'Generated session cookies may be incompatible with other '
-         'environments' % (getKeyLength() * 8))
+    warn(
+        "Crypto implementation only supports key lengths up to %d bits. "
+        "Generated session cookies may be incompatible with other "
+        "environments" % (getKeyLength() * 8)
+    )

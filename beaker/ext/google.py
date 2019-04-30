@@ -21,21 +21,25 @@ class GoogleNamespaceManager(OpenResourceNamespaceManager):
         if db is not None:
             return
         try:
-            db = __import__('google.appengine.ext.db').appengine.ext.db
+            db = __import__("google.appengine.ext.db").appengine.ext.db
         except ImportError:
-            raise InvalidCacheBackendError("Datastore cache backend requires the "
-                                           "'google.appengine.ext' library")
+            raise InvalidCacheBackendError(
+                "Datastore cache backend requires the " "'google.appengine.ext' library"
+            )
 
-    def __init__(self, namespace, table_name='beaker_cache', **params):
+    def __init__(self, namespace, table_name="beaker_cache", **params):
         """Creates a datastore namespace manager"""
         OpenResourceNamespaceManager.__init__(self, namespace)
 
         def make_cache():
-            table_dict = dict(created=db.DateTimeProperty(),
-                              accessed=db.DateTimeProperty(),
-                              data=db.BlobProperty())
+            table_dict = dict(
+                created=db.DateTimeProperty(),
+                accessed=db.DateTimeProperty(),
+                data=db.BlobProperty(),
+            )
             table = type(table_name, (db.Model,), table_dict)
             return table
+
         self.table_name = table_name
         self.cache = GoogleNamespaceManager.tables.setdefault(table_name, make_cache())
         self.hash = {}
@@ -45,7 +49,7 @@ class GoogleNamespaceManager(OpenResourceNamespaceManager):
 
         # Google wants namespaces to start with letters, change the namespace
         # to start with a letter
-        self.namespace = 'p%s' % self.namespace
+        self.namespace = "p%s" % self.namespace
 
     def get_access_lock(self):
         return null_synchronizer()
@@ -78,7 +82,7 @@ class GoogleNamespaceManager(OpenResourceNamespaceManager):
         self.loaded = True
 
     def do_close(self):
-        if self.flags is not None and (self.flags == 'c' or self.flags == 'w'):
+        if self.flags is not None and (self.flags == "c" or self.flags == "w"):
             if self._is_new:
                 item = self.cache(key_name=self.namespace)
                 item.data = pickle.dumps(self.hash)

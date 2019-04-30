@@ -2,6 +2,7 @@ from beaker.util import SyncDict, WeakValuedRegistry
 import random, time, weakref
 import threading
 
+
 class Value(object):
     values = {}
 
@@ -11,13 +12,16 @@ class Value(object):
     def stop_doing_something(self, id):
         del Value.values[id]
 
+
 mutex = threading.Lock()
+
 
 def create(id):
     assert not Value.values, "values still remain"
     global totalcreates
     totalcreates += 1
     return Value()
+
 
 def threadtest(s, id):
     print("create thread %d starting" % id)
@@ -26,7 +30,7 @@ def threadtest(s, id):
     global totalgets
     while running:
         try:
-            value = s.get('test', lambda: create(id))
+            value = s.get("test", lambda: create(id))
             value.do_something(id)
         except Exception as e:
             print("Error", e)
@@ -34,10 +38,11 @@ def threadtest(s, id):
             break
         else:
             totalgets += 1
-            time.sleep(random.random() * .01)
+            time.sleep(random.random() * 0.01)
             value.stop_doing_something(id)
             del value
-            time.sleep(random.random() * .01)
+            time.sleep(random.random() * 0.01)
+
 
 def runtest(s):
 

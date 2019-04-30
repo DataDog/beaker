@@ -21,10 +21,11 @@ def _long_to_bin(x, hex_format_string):
     Convert a long integer into a binary string.
     hex_format_string is like "%020x" for padding 10 characters.
     """
-    return binascii.unhexlify((hex_format_string % x).encode('ascii'))
+    return binascii.unhexlify((hex_format_string % x).encode("ascii"))
 
 
 if hasattr(hashlib, "pbkdf2_hmac"):
+
     def pbkdf2(password, salt, iterations, dklen=0, digest=None):
         """
         Implements PBKDF2 using the stdlib. This is used in Python 2.7.8+ and 3.4+.
@@ -42,9 +43,11 @@ if hasattr(hashlib, "pbkdf2_hmac"):
             dklen = None
         password = bytes_(password)
         salt = bytes_(salt)
-        return hashlib.pbkdf2_hmac(
-            digest().name, password, salt, iterations, dklen)
+        return hashlib.pbkdf2_hmac(digest().name, password, salt, iterations, dklen)
+
+
 else:
+
     def pbkdf2(password, salt, iterations, dklen=0, digest=None):
         """
         Implements PBKDF2 as defined in RFC 2898, section 5.2
@@ -66,7 +69,7 @@ else:
         if not dklen:
             dklen = hlen
         if dklen > (2 ** 32 - 1) * hlen:
-            raise OverflowError('dklen too big')
+            raise OverflowError("dklen too big")
         l = -(-dklen // hlen)
         r = dklen - (l - 1) * hlen
 
@@ -75,12 +78,12 @@ else:
         inner, outer = digest(), digest()
         if len(password) > inner.block_size:
             password = digest(password).digest()
-        password += b'\x00' * (inner.block_size - len(password))
+        password += b"\x00" * (inner.block_size - len(password))
         inner.update(password.translate(hmac.trans_36))
         outer.update(password.translate(hmac.trans_5C))
 
         def F(i):
-            u = salt + struct.pack(b'>I', i)
+            u = salt + struct.pack(b">I", i)
             result = 0
             for j in xrange_(int(iterations)):
                 dig1, dig2 = inner.copy(), outer.copy()
@@ -91,4 +94,4 @@ else:
             return _long_to_bin(result, hex_format_string)
 
         T = [F(x) for x in xrange_(1, l)]
-        return b''.join(T) + F(l)[:r]
+        return b"".join(T) + F(l)[:r]

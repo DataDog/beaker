@@ -1,10 +1,25 @@
-from ._compat import PY2, pickle, http_cookies, unicode_text, b64encode, b64decode, string_type
+from ._compat import (
+    PY2,
+    pickle,
+    http_cookies,
+    unicode_text,
+    b64encode,
+    b64decode,
+    string_type,
+)
 
 import os
 import time
 import logging
 from datetime import datetime, timedelta
-from beaker.crypto import hmac as HMAC, hmac_sha1 as SHA1, sha1, get_nonce_size, DEFAULT_NONCE_BITS, get_crypto_module
+from beaker.crypto import (
+    hmac as HMAC,
+    hmac_sha1 as SHA1,
+    sha1,
+    get_nonce_size,
+    DEFAULT_NONCE_BITS,
+    get_crypto_module,
+)
 from beaker import crypto, util
 from beaker.cache import clsmap
 from beaker.exceptions import BeakerException, InvalidCryptoBackendError
@@ -303,7 +318,9 @@ class Session(dict):
         elif self.data_serializer == "pickle":
             self.serializer = util.PickleSerializer()
         elif isinstance(self.data_serializer, string_type):
-            raise BeakerException("Invalid value for data_serializer: %s" % data_serializer)
+            raise BeakerException(
+                "Invalid value for data_serializer: %s" % data_serializer
+            )
         else:
             self.serializer = data_serializer
 
@@ -364,14 +381,18 @@ class Session(dict):
         elif isinstance(expires, datetime):
             expires_date = expires
         elif expires is not True:
-            raise ValueError("Invalid argument for cookie_expires: %s" % repr(self.cookie_expires))
+            raise ValueError(
+                "Invalid argument for cookie_expires: %s" % repr(self.cookie_expires)
+            )
         self.cookie_expires = expires
         if not self.cookie or self.key not in self.cookie:
             self.cookie[self.key] = self.id
         if expires is True:
             self.cookie[self.key]["expires"] = ""
             return True
-        self.cookie[self.key]["expires"] = expires_date.strftime("%a, %d-%b-%Y %H:%M:%S GMT")
+        self.cookie[self.key]["expires"] = expires_date.strftime(
+            "%a, %d-%b-%Y %H:%M:%S GMT"
+        )
         return expires_date
 
     def _update_cookie_out(self, set_cookie=True):
@@ -427,13 +448,20 @@ class Session(dict):
             nonce_len, nonce_b64len = self.encrypt_nonce_size
             nonce = b64encode(os.urandom(nonce_len))[:nonce_b64len]
             encrypt_key = crypto.generateCryptoKeys(
-                self.encrypt_key, self.validate_key + nonce, 1, self.crypto_module.getKeyLength()
+                self.encrypt_key,
+                self.validate_key + nonce,
+                1,
+                self.crypto_module.getKeyLength(),
             )
             data = self.serializer.dumps(session_data)
             if migration:
-                return nonce + b64encode(self.crypto_module_2.aesEncrypt(data, encrypt_key))
+                return nonce + b64encode(
+                    self.crypto_module_2.aesEncrypt(data, encrypt_key)
+                )
             else:
-                return nonce + b64encode(self.crypto_module.aesEncrypt(data, encrypt_key))
+                return nonce + b64encode(
+                    self.crypto_module.aesEncrypt(data, encrypt_key)
+                )
         else:
             data = self.serializer.dumps(session_data)
             return b64encode(data)
@@ -445,7 +473,10 @@ class Session(dict):
             __, nonce_b64len = self.encrypt_nonce_size
             nonce = session_data[:nonce_b64len]
             encrypt_key = crypto.generateCryptoKeys(
-                self.encrypt_key, self.validate_key + nonce, 1, self.crypto_module.getKeyLength()
+                self.encrypt_key,
+                self.validate_key + nonce,
+                1,
+                self.crypto_module.getKeyLength(),
             )
             payload = b64decode(session_data[nonce_b64len:])
             if migration:
@@ -482,7 +513,10 @@ class Session(dict):
         "Loads the data from this session from persistent storage"
         if self.old_reads():
             self.namespace = self.namespace_class(
-                self.id, data_dir=self.data_dir, digest_filenames=False, **self.namespace_args
+                self.id,
+                data_dir=self.data_dir,
+                digest_filenames=False,
+                **self.namespace_args
             )
 
         # REMOVE AFTER MIGRATION
@@ -519,8 +553,12 @@ class Session(dict):
                         self._increment("dd.beaker.reads.new.found", [])
                         session_data = self._decrypt_data(session_data, migration=True)
                     elif not self.old_reads():  # self.old_reads == True
-                        log.info("[session migration] [new_reads] not old reads and session not found")
-                        self._increment("dd.beaker.reads.new.not_found", ["type:post-migration"])
+                        log.info(
+                            "[session migration] [new_reads] not old reads and session not found"
+                        )
+                        self._increment(
+                            "dd.beaker.reads.new.not_found", ["type:post-migration"]
+                        )
 
                         # Memcached always returns a key, its None when its not present
                         session_data = {"_creation_time": now, "_accessed_time": now}
@@ -531,23 +569,37 @@ class Session(dict):
                     # NEVER EVER GET HERE
                     session_data = None
                     if self.old_reads():
-                        log.info("[session migration] [new_reads] old reads and key/type error")
-                        self._increment("dd.beaker.reads.new.not_found", ["type:old-reads-error"])
+                        log.info(
+                            "[session migration] [new_reads] old reads and key/type error"
+                        )
+                        self._increment(
+                            "dd.beaker.reads.new.not_found", ["type:old-reads-error"]
+                        )
                         # We still have another backend we could be reading from, so don't create new sessions here
                         pass
                     else:
-                        log.info("[session migration] [new_reads] not old reads and key/type error")
-                        self._increment("dd.beaker.reads.new.not_found", ["type:not-old-reads-error"])
+                        log.info(
+                            "[session migration] [new_reads] not old reads and key/type error"
+                        )
+                        self._increment(
+                            "dd.beaker.reads.new.not_found",
+                            ["type:not-old-reads-error"],
+                        )
                         # Post migration we should
                         session_data = {"_creation_time": now, "_accessed_time": now}
                         self.is_new = True
                         read_value = True
 
-                if not self.old_reads() and (session_data is None or len(session_data) == 0):
+                if not self.old_reads() and (
+                    session_data is None or len(session_data) == 0
+                ):
                     log.info(
                         "[session migration] [new_reads] not old reads and session is none or len 0"
                     )
-                    self._increment("dd.beaker.reads.new.not_found", ["type:not-old-reads-no-session-data"])
+                    self._increment(
+                        "dd.beaker.reads.new.not_found",
+                        ["type:not-old-reads-no-session-data"],
+                    )
                     session_data = {"_creation_time": now, "_accessed_time": now}
                     self.is_new = True
                     read_value = True
@@ -555,18 +607,27 @@ class Session(dict):
                 # we did not find a session, create one
                 if session_data is None or len(session_data) == 0:
                     log.info("[session migration] [new_reads] session is none or len 0")
-                    self._increment("dd.beaker.reads.new.not_found", ["type:no-session-data"])
+                    self._increment(
+                        "dd.beaker.reads.new.not_found", ["type:no-session-data"]
+                    )
                     session_data = {"_creation_time": now, "_accessed_time": now}
                     self.is_new = True
                     read_value = True
 
-                if self.timeout is not None and now - session_data["_accessed_time"] > self.timeout:
-                    log.info("[session migration] [new_reads] session is not None and timeout")
+                if (
+                    self.timeout is not None
+                    and now - session_data["_accessed_time"] > self.timeout
+                ):
+                    log.info(
+                        "[session migration] [new_reads] session is not None and timeout"
+                    )
                     self._increment("dd.beaker.reads.new.timeout", [])
                     timed_out = True
                     read_value = True
                 else:
-                    log.info("[session migration] [new_reads] session is not None and no timeout")
+                    log.info(
+                        "[session migration] [new_reads] session is not None and no timeout"
+                    )
                     read_value = True
                     # Properly set the last_accessed time, which is different
                     # than the *currently* _accessed_time
@@ -589,7 +650,9 @@ class Session(dict):
                 self.namespace2.release_read_lock()
 
             if timed_out:
-                log.info("[session migration] [new_reads] timeout, invalidating session")
+                log.info(
+                    "[session migration] [new_reads] timeout, invalidating session"
+                )
                 self.invalidate()
 
         # Suppose to represent finding a value
@@ -620,22 +683,33 @@ class Session(dict):
                 # present
                 if session_data is None:
                     log.info("[session migration] [old reads] session data not found")
-                    self._increment("dd.beaker.reads.old.not_found", ["type:session-data-none"])
+                    self._increment(
+                        "dd.beaker.reads.old.not_found", ["type:session-data-none"]
+                    )
                     session_data = {"_creation_time": now, "_accessed_time": now}
                     self.is_new = True
             except (KeyError, TypeError):
                 log.info("[session migration] [old reads] key/type error")
-                self._increment("dd.beaker.reads.old.not_found", ["type:key-type-error"])
+                self._increment(
+                    "dd.beaker.reads.old.not_found", ["type:key-type-error"]
+                )
                 session_data = {"_creation_time": now, "_accessed_time": now}
                 self.is_new = True
 
             if session_data is None or len(session_data) == 0:
-                log.info("[session migration] [old reads] session data is none or len 0")
-                self._increment("dd.beaker.reads.old.not_found", ["type:session-data-none-2"])
+                log.info(
+                    "[session migration] [old reads] session data is none or len 0"
+                )
+                self._increment(
+                    "dd.beaker.reads.old.not_found", ["type:session-data-none-2"]
+                )
                 session_data = {"_creation_time": now, "_accessed_time": now}
                 self.is_new = True
 
-            if self.timeout is not None and now - session_data["_accessed_time"] > self.timeout:
+            if (
+                self.timeout is not None
+                and now - session_data["_accessed_time"] > self.timeout
+            ):
                 log.info("[session migration] [old reads] timeout")
                 self._increment("dd.beaker.reads.old.timeout", [])
                 timed_out = True
@@ -681,7 +755,10 @@ class Session(dict):
         if self.old_writes():
             if not hasattr(self, "namespace") or self.namespace.namespace != self.id:
                 self.namespace = self.namespace_class(
-                    self.id, data_dir=self.data_dir, digest_filenames=False, **self.namespace_args
+                    self.id,
+                    data_dir=self.data_dir,
+                    digest_filenames=False,
+                    **self.namespace_args
                 )
 
         if self.new_writes():
@@ -843,7 +920,8 @@ class CookieSession(Session):
 
         if not self.crypto_module.has_aes and encrypt_key:
             raise InvalidCryptoBackendError(
-                "No AES library is installed, can't generate " "encrypted cookie-only Session."
+                "No AES library is installed, can't generate "
+                "encrypted cookie-only Session."
             )
 
         self.request = request
@@ -868,7 +946,9 @@ class CookieSession(Session):
             cookieheader = ""
 
         if validate_key is None:
-            raise BeakerException("No validate_key specified for Cookie only " "Session.")
+            raise BeakerException(
+                "No validate_key specified for Cookie only " "Session."
+            )
         if timeout and not save_accessed_time:
             raise BeakerException("timeout requires save_accessed_time")
 

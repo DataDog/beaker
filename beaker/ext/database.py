@@ -30,12 +30,22 @@ class DatabaseNamespaceManager(OpenResourceNamespaceManager):
             import sqlalchemy.pool as pool
             from sqlalchemy import types
         except ImportError:
-            raise InvalidCacheBackendError("Database cache backend requires "
-                                            "the 'sqlalchemy' library")
+            raise InvalidCacheBackendError(
+                "Database cache backend requires " "the 'sqlalchemy' library"
+            )
 
-    def __init__(self, namespace, url=None, sa_opts=None, optimistic=False,
-                 table_name='beaker_cache', data_dir=None, lock_dir=None,
-                 schema_name=None, **params):
+    def __init__(
+        self,
+        namespace,
+        url=None,
+        sa_opts=None,
+        optimistic=False,
+        table_name="beaker_cache",
+        data_dir=None,
+        lock_dir=None,
+        schema_name=None,
+        **params
+    ):
         """Creates a database namespace manager
 
         ``url``
@@ -67,7 +77,7 @@ class DatabaseNamespaceManager(OpenResourceNamespaceManager):
             verify_directory(self.lock_dir)
 
         # Check to see if the table's been created before
-        url = url or sa_opts['sa.url']
+        url = url or sa_opts["sa.url"]
         table_key = url + table_name
 
         def make_cache():
@@ -77,24 +87,28 @@ class DatabaseNamespaceManager(OpenResourceNamespaceManager):
             def make_meta():
                 # SQLAlchemy pops the url, this ensures it sticks around
                 # later
-                sa_opts['sa.url'] = url
-                engine = sa.engine_from_config(sa_opts, 'sa.')
+                sa_opts["sa.url"] = url
+                engine = sa.engine_from_config(sa_opts, "sa.")
                 meta = sa.MetaData()
                 meta.bind = engine
                 return meta
+
             meta = DatabaseNamespaceManager.metadatas.get(meta_key, make_meta)
             # Create the table object and cache it now
-            cache = sa.Table(table_name, meta,
-                             sa.Column('id', types.Integer, primary_key=True),
-                             sa.Column('namespace', types.String(255), nullable=False),
-                             sa.Column('accessed', types.DateTime, nullable=False),
-                             sa.Column('created', types.DateTime, nullable=False),
-                             sa.Column('data', types.PickleType, nullable=False),
-                             sa.UniqueConstraint('namespace'),
-                             schema=schema_name if schema_name else meta.schema
+            cache = sa.Table(
+                table_name,
+                meta,
+                sa.Column("id", types.Integer, primary_key=True),
+                sa.Column("namespace", types.String(255), nullable=False),
+                sa.Column("accessed", types.DateTime, nullable=False),
+                sa.Column("created", types.DateTime, nullable=False),
+                sa.Column("data", types.PickleType, nullable=False),
+                sa.UniqueConstraint("namespace"),
+                schema=schema_name if schema_name else meta.schema,
             )
             cache.create(checkfirst=True)
             return cache
+
         self.hash = {}
         self._is_new = False
         self.loaded = False
@@ -105,10 +119,9 @@ class DatabaseNamespaceManager(OpenResourceNamespaceManager):
 
     def get_creation_lock(self, key):
         return file_synchronizer(
-            identifier="databasecontainer/funclock/%s/%s" % (
-                self.namespace, key
-            ),
-            lock_dir=self.lock_dir)
+            identifier="databasecontainer/funclock/%s/%s" % (self.namespace, key),
+            lock_dir=self.lock_dir,
+        )
 
     def do_open(self, flags, replace):
         # If we already loaded the data, don't bother loading it again
@@ -117,21 +130,20 @@ class DatabaseNamespaceManager(OpenResourceNamespaceManager):
             return
 
         cache = self.cache
-        result_proxy = sa.select([cache.c.data],
-                           cache.c.namespace == self.namespace
-                          ).execute()
+        result_proxy = sa.select(
+            [cache.c.data], cache.c.namespace == self.namespace
+        ).execute()
         result = result_proxy.fetchone()
         result_proxy.close()
-        
+
         if not result:
             self._is_new = True
             self.hash = {}
         else:
             self._is_new = False
             try:
-                self.hash = result['data']
-            except (IOError, OSError, EOFError, pickle.PickleError,
-                    pickle.PickleError):
+                self.hash = result["data"]
+            except (IOError, OSError, EOFError, pickle.PickleError, pickle.PickleError):
                 log.debug("Couln't load pickle data, creating new storage")
                 self.hash = {}
                 self._is_new = True
@@ -139,16 +151,20 @@ class DatabaseNamespaceManager(OpenResourceNamespaceManager):
         self.loaded = True
 
     def do_close(self):
-        if self.flags is not None and (self.flags == 'c' or self.flags == 'w'):
+        if self.flags is not None and (self.flags == "c" or self.flags == "w"):
             cache = self.cache
             if self._is_new:
-                cache.insert().execute(namespace=self.namespace, data=self.hash,
-                                       accessed=datetime.now(),
-                                       created=datetime.now())
+                cache.insert().execute(
+                    namespace=self.namespace,
+                    data=self.hash,
+                    accessed=datetime.now(),
+                    created=datetime.now(),
+                )
                 self._is_new = False
             else:
                 cache.update(cache.c.namespace == self.namespace).execute(
-                    data=self.hash, accessed=datetime.now())
+                    data=self.hash, accessed=datetime.now()
+                )
         self.flags = None
 
     def do_remove(self):

@@ -9,20 +9,35 @@ import os
 import time
 
 from beaker.exceptions import CreationAbortedError, MissingCacheParameter
-from beaker.synchronization import _threading, file_synchronizer, \
-     mutex_synchronizer, NameLock, null_synchronizer
+from beaker.synchronization import (
+    _threading,
+    file_synchronizer,
+    mutex_synchronizer,
+    NameLock,
+    null_synchronizer,
+)
 
-__all__ = ['Value', 'Container', 'ContainerContext',
-           'MemoryContainer', 'DBMContainer', 'NamespaceManager',
-           'MemoryNamespaceManager', 'DBMNamespaceManager', 'FileContainer',
-           'OpenResourceNamespaceManager',
-           'FileNamespaceManager', 'CreationAbortedError']
+__all__ = [
+    "Value",
+    "Container",
+    "ContainerContext",
+    "MemoryContainer",
+    "DBMContainer",
+    "NamespaceManager",
+    "MemoryNamespaceManager",
+    "DBMNamespaceManager",
+    "FileContainer",
+    "OpenResourceNamespaceManager",
+    "FileNamespaceManager",
+    "CreationAbortedError",
+]
 
 
-logger = logging.getLogger('beaker.container')
+logger = logging.getLogger("beaker.container")
 if logger.isEnabledFor(logging.DEBUG):
     debug = logger.debug
 else:
+
     def debug(message, *args):
         pass
 
@@ -187,6 +202,7 @@ class OpenResourceNamespaceManager(NamespaceManager):
     closing of a resource which is possibly mutexed.
 
     """
+
     def __init__(self, namespace):
         NamespaceManager.__init__(self, namespace)
         self.access_lock = self.get_access_lock()
@@ -205,7 +221,7 @@ class OpenResourceNamespaceManager(NamespaceManager):
     def acquire_read_lock(self):
         self.access_lock.acquire_read_lock()
         try:
-            self.open('r', checkcount=True)
+            self.open("r", checkcount=True)
         except:
             self.access_lock.release_read_lock()
             raise
@@ -219,8 +235,8 @@ class OpenResourceNamespaceManager(NamespaceManager):
     def acquire_write_lock(self, wait=True, replace=False):
         r = self.access_lock.acquire_write_lock(wait)
         try:
-            if (wait or r):
-                self.open('c', checkcount=True, replace=replace)
+            if wait or r:
+                self.open("c", checkcount=True, replace=replace)
             return r
         except:
             self.access_lock.release_write_lock()
@@ -274,10 +290,19 @@ class Value(object):
 
     """
 
-    __slots__ = 'key', 'createfunc', 'expiretime', 'expire_argument', 'starttime', 'storedtime',\
-                'namespace'
+    __slots__ = (
+        "key",
+        "createfunc",
+        "expiretime",
+        "expire_argument",
+        "starttime",
+        "storedtime",
+        "namespace",
+    )
 
-    def __init__(self, key, namespace, createfunc=None, expiretime=None, starttime=None):
+    def __init__(
+        self, key, namespace, createfunc=None, expiretime=None, starttime=None
+    ):
         self.key = key
         self.createfunc = createfunc
         self.expire_argument = expiretime
@@ -316,16 +341,8 @@ class Value(object):
 
     def _is_expired(self, storedtime, expiretime):
         """Return true if this container's value is expired."""
-        return (
-            (
-                self.starttime is not None and
-                storedtime < self.starttime
-            )
-            or
-            (
-                expiretime is not None and
-                time.time() >= expiretime + storedtime
-            )
+        return (self.starttime is not None and storedtime < self.starttime) or (
+            expiretime is not None and time.time() >= expiretime + storedtime
         )
 
     def get_value(self):
@@ -394,7 +411,11 @@ class Value(object):
             # Old format: upgrade
             stored, value = value
             expired = self.expire_argument
-            debug("get_value upgrading time %r expire time %r", stored, self.expire_argument)
+            debug(
+                "get_value upgrading time %r expire time %r",
+                stored,
+                self.expire_argument,
+            )
             self.namespace.release_read_lock()
             self.set_value(value, stored)
             self.namespace.acquire_read_lock()
@@ -410,9 +431,16 @@ class Value(object):
         try:
             if storedtime is None:
                 storedtime = time.time()
-            debug("set_value stored time %r expire time %r", storedtime, self.expire_argument)
-            self.namespace.set_value(self.key, (storedtime, self.expire_argument, value),
-                                     expiretime=self.expire_argument)
+            debug(
+                "set_value stored time %r expire time %r",
+                storedtime,
+                self.expire_argument,
+            )
+            self.namespace.set_value(
+                self.key,
+                (storedtime, self.expire_argument, value),
+                expiretime=self.expire_argument,
+            )
         finally:
             self.namespace.release_write_lock()
 
@@ -458,9 +486,8 @@ class AbstractDictionaryNSManager(NamespaceManager):
 
     def get_creation_lock(self, key):
         return NameLock(
-            identifier="memorynamespace/funclock/%s/%s" %
-                        (self.namespace, key),
-            reentrant=True
+            identifier="memorynamespace/funclock/%s/%s" % (self.namespace, key),
+            reentrant=True,
         )
 
     def __getitem__(self, key):
@@ -492,16 +519,22 @@ class MemoryNamespaceManager(AbstractDictionaryNSManager):
 
     def __init__(self, namespace, **kwargs):
         AbstractDictionaryNSManager.__init__(self, namespace)
-        self.dictionary = MemoryNamespaceManager.\
-                                namespaces.get(self.namespace, dict)
+        self.dictionary = MemoryNamespaceManager.namespaces.get(self.namespace, dict)
 
 
 class DBMNamespaceManager(OpenResourceNamespaceManager):
     """:class:`.NamespaceManager` that uses ``dbm`` files for storage."""
 
-    def __init__(self, namespace, dbmmodule=None, data_dir=None,
-            dbm_dir=None, lock_dir=None,
-            digest_filenames=True, **kwargs):
+    def __init__(
+        self,
+        namespace,
+        dbmmodule=None,
+        data_dir=None,
+        dbm_dir=None,
+        lock_dir=None,
+        digest_filenames=True,
+        **kwargs
+    ):
         self.digest_filenames = digest_filenames
 
         if not dbm_dir and not data_dir:
@@ -525,31 +558,30 @@ class DBMNamespaceManager(OpenResourceNamespaceManager):
         self.dbm = None
         OpenResourceNamespaceManager.__init__(self, namespace)
 
-        self.file = util.encoded_path(root=self.dbm_dir,
-                                      identifiers=[self.namespace],
-                                      extension='.dbm',
-                                      digest_filenames=self.digest_filenames)
+        self.file = util.encoded_path(
+            root=self.dbm_dir,
+            identifiers=[self.namespace],
+            extension=".dbm",
+            digest_filenames=self.digest_filenames,
+        )
 
         debug("data file %s", self.file)
         self._checkfile()
 
     def get_access_lock(self):
-        return file_synchronizer(identifier=self.namespace,
-                                 lock_dir=self.lock_dir)
+        return file_synchronizer(identifier=self.namespace, lock_dir=self.lock_dir)
 
     def get_creation_lock(self, key):
         return file_synchronizer(
-                    identifier="dbmcontainer/funclock/%s/%s" % (
-                        self.namespace, key
-                    ),
-                    lock_dir=self.lock_dir
-                )
+            identifier="dbmcontainer/funclock/%s/%s" % (self.namespace, key),
+            lock_dir=self.lock_dir,
+        )
 
     def file_exists(self, file):
         if os.access(file, os.F_OK):
             return True
         else:
-            for ext in ('db', 'dat', 'pag', 'dir'):
+            for ext in ("db", "dat", "pag", "dir"):
                 if os.access(file + os.extsep + ext, os.F_OK):
                     return True
 
@@ -563,7 +595,7 @@ class DBMNamespaceManager(OpenResourceNamespaceManager):
     def _checkfile(self):
         if not self.file_exists(self.file):
             self._ensuredir(self.file)
-            g = self.dbmmodule.open(self.file, 'c')
+            g = self.dbmmodule.open(self.file, "c")
             g.close()
 
     def get_filenames(self):
@@ -571,7 +603,7 @@ class DBMNamespaceManager(OpenResourceNamespaceManager):
         if os.access(self.file, os.F_OK):
             list.append(self.file)
 
-        for ext in ('pag', 'dir', 'db', 'dat'):
+        for ext in ("pag", "dir", "db", "dat"):
             if os.access(self.file + os.extsep + ext, os.F_OK):
                 list.append(self.file + os.extsep + ext)
         return list
@@ -601,7 +633,7 @@ class DBMNamespaceManager(OpenResourceNamespaceManager):
             # Looks like this is a bug that got solved in PY3.3 and PY3.4
             # http://bugs.python.org/issue19288
             if isinstance(key, unicode_text):
-                key = key.encode('UTF-8')
+                key = key.encode("UTF-8")
         return key in self.dbm
 
     def __setitem__(self, key, value):
@@ -622,8 +654,16 @@ class FileNamespaceManager(OpenResourceNamespaceManager):
     ``pickle`` module.
 
     """
-    def __init__(self, namespace, data_dir=None, file_dir=None, lock_dir=None,
-                 digest_filenames=True, **kwargs):
+
+    def __init__(
+        self,
+        namespace,
+        data_dir=None,
+        file_dir=None,
+        lock_dir=None,
+        digest_filenames=True,
+        **kwargs
+    ):
         self.digest_filenames = digest_filenames
 
         if not file_dir and not data_dir:
@@ -643,25 +683,24 @@ class FileNamespaceManager(OpenResourceNamespaceManager):
         util.verify_directory(self.lock_dir)
         OpenResourceNamespaceManager.__init__(self, namespace)
 
-        self.file = util.encoded_path(root=self.file_dir,
-                                      identifiers=[self.namespace],
-                                      extension='.cache',
-                                      digest_filenames=self.digest_filenames)
+        self.file = util.encoded_path(
+            root=self.file_dir,
+            identifiers=[self.namespace],
+            extension=".cache",
+            digest_filenames=self.digest_filenames,
+        )
         self.hash = {}
 
         debug("data file %s", self.file)
 
     def get_access_lock(self):
-        return file_synchronizer(identifier=self.namespace,
-                                 lock_dir=self.lock_dir)
+        return file_synchronizer(identifier=self.namespace, lock_dir=self.lock_dir)
 
     def get_creation_lock(self, key):
         return file_synchronizer(
-                identifier="dbmcontainer/funclock/%s/%s" % (
-                    self.namespace, key
-                ),
-                lock_dir=self.lock_dir
-                )
+            identifier="dbmcontainer/funclock/%s/%s" % (self.namespace, key),
+            lock_dir=self.lock_dir,
+        )
 
     def file_exists(self, file):
         return os.access(file, os.F_OK)
@@ -669,7 +708,7 @@ class FileNamespaceManager(OpenResourceNamespaceManager):
     def do_open(self, flags, replace):
         if not replace and self.file_exists(self.file):
             try:
-                with open(self.file, 'rb') as fh:
+                with open(self.file, "rb") as fh:
                     self.hash = pickle.load(fh)
             except IOError as e:
                 # Ignore EACCES and ENOENT as it just means we are no longer
@@ -680,7 +719,7 @@ class FileNamespaceManager(OpenResourceNamespaceManager):
         self.flags = flags
 
     def do_close(self):
-        if self.flags == 'c' or self.flags == 'w':
+        if self.flags == "c" or self.flags == "w":
             pickled = pickle.dumps(self.hash)
             util.safe_write(self.file, pickled)
 
@@ -724,15 +763,25 @@ class ContainerMeta(type):
         namespace_classes[cls] = cls.namespace_class
         return type.__init__(cls, classname, bases, dict_)
 
-    def __call__(self, key, context, namespace, createfunc=None,
-                 expiretime=None, starttime=None, **kwargs):
+    def __call__(
+        self,
+        key,
+        context,
+        namespace,
+        createfunc=None,
+        expiretime=None,
+        starttime=None,
+        **kwargs
+    ):
         if namespace in context:
             ns = context[namespace]
         else:
             nscls = namespace_classes[self]
             context[namespace] = ns = nscls(namespace, **kwargs)
-        return Value(key, ns, createfunc=createfunc,
-                     expiretime=expiretime, starttime=starttime)
+        return Value(
+            key, ns, createfunc=createfunc, expiretime=expiretime, starttime=starttime
+        )
+
 
 @add_metaclass(ContainerMeta)
 class Container(object):
@@ -743,6 +792,7 @@ class Container(object):
     :class:`.Value` class is now used for this purpose.
 
     """
+
     namespace_class = NamespaceManager
 
 
@@ -756,5 +806,6 @@ class MemoryContainer(Container):
 
 class DBMContainer(Container):
     namespace_class = DBMNamespaceManager
+
 
 DbmContainer = DBMContainer
