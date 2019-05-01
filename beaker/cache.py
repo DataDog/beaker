@@ -120,6 +120,9 @@ class _backends(object):
         except ImportError:
             pass
 
+    def add_backend(self, name, manager):
+        self._clsmap[name] = manager
+
 
 # Initialize the basic available backends
 clsmap = _backends(
@@ -326,6 +329,10 @@ class Cache(object):
         except KeyError:
             cache_managers[key] = cache = cls(namespace, **kw)
             return cache
+
+    @classmethod
+    def add_backend(cls, name, manager):
+        clsmap.add_backend(name, manager)
 
     def put(self, key, value, **kw):
         self._get_value(key, **kw).set_value(value)
