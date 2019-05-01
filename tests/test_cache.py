@@ -12,6 +12,7 @@ from beaker import util
 from beaker.cache import Cache
 from nose import SkipTest
 from beaker.util import skip_if
+import beaker.container as container
 import base64
 import zlib
 
@@ -338,6 +339,12 @@ def _test_upgrade_setitem(dir):
     cache = Cache("test", data_dir=dir, type="dbm")
     assert cache["foo"] == "bar"
     assert cache["foo"] == "bar"
+
+
+def _test_add_backend(dir):
+    Cache.add_backend("dbm2", container.DBMNamespaceManager)
+    # Should not raise exception
+    Cache("test", data_dir=dir, type="dbm2")
 
 
 def teardown():
