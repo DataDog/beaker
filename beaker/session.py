@@ -1,8 +1,6 @@
 from ._compat import (
     PY2,
-    pickle,
     http_cookies,
-    unicode_text,
     b64encode,
     b64decode,
     string_type,
@@ -539,7 +537,7 @@ class Session(dict):
         session_data = None
         # REMOVE AFTER MIGRATION - Attempt to read from the new backend
         if self.new_reads():  # TRUE > [READS, POST]
-            log.info("[session migration] [new_reads] read attempt")
+            log.debug("[session migration] [new_reads] read attempt")
             self._increment("dd.beaker.reads.new.attempt", [])
             self.namespace2.acquire_read_lock()
             try:
@@ -549,7 +547,7 @@ class Session(dict):
                     # swallows the error
                     session_data = self.namespace2["session"]
                     if session_data is not None and self.encrypt_key:
-                        log.info("[session migration] [new_reads] session found")
+                        log.debug("[session migration] [new_reads] session found")
                         self._increment("dd.beaker.reads.new.found", [])
                         session_data = self._decrypt_data(session_data, migration=True)
                     elif not self.old_reads():  # self.old_reads == True
@@ -606,7 +604,7 @@ class Session(dict):
 
                 # we did not find a session, create one
                 if session_data is None or len(session_data) == 0:
-                    log.info("[session migration] [new_reads] session is none or len 0")
+                    log.debug("[session migration] [new_reads] session is none or len 0")
                     self._increment(
                         "dd.beaker.reads.new.not_found", ["type:no-session-data"]
                     )
@@ -643,7 +641,7 @@ class Session(dict):
                     if "_path" in session_data:
                         self._path = session_data["_path"]
                     self._increment("dd.beaker.reads.new.update", [])
-                    log.info("[session migration] [new_reads] updating session")
+                    log.debug("[session migration] [new_reads] updating session")
                     self.update(session_data)
                     self.accessed_dict = session_data.copy()
             finally:
@@ -657,7 +655,7 @@ class Session(dict):
 
         # Suppose to represent finding a value
         if read_value:
-            log.info("[session migration] [new_reads] read_value is True, returning")
+            log.debug("[session migration] [new_reads] read_value is True, returning")
             self._increment("dd.beaker.reads.read_value", [])
             return
         # END REMOVE AFTER MIGRATION
@@ -668,28 +666,28 @@ class Session(dict):
         self.namespace.acquire_read_lock()
         timed_out = False
         try:
-            log.info("[session migration] [old reads] read attempt")
+            log.debug("[session migration] [old reads] read attempt")
             self._increment("dd.beaker.reads.old.attempt", [])
             self.clear()
             try:
                 session_data = self.namespace["session"]
 
                 if session_data is not None and self.encrypt_key:
-                    log.info("[session migration] [old reads] session data found")
+                    log.debug("[session migration] [old reads] session data found")
                     self._increment("dd.beaker.reads.old.found", [])
                     session_data = self._decrypt_data(session_data)
 
                 # Memcached always returns a key, its None when its not
                 # present
                 if session_data is None:
-                    log.info("[session migration] [old reads] session data not found")
+                    log.debug("[session migration] [old reads] session data not found")
                     self._increment(
                         "dd.beaker.reads.old.not_found", ["type:session-data-none"]
                     )
                     session_data = {"_creation_time": now, "_accessed_time": now}
                     self.is_new = True
             except (KeyError, TypeError):
-                log.info("[session migration] [old reads] key/type error")
+                log.debug("[session migration] [old reads] key/type error")
                 self._increment(
                     "dd.beaker.reads.old.not_found", ["type:key-type-error"]
                 )
@@ -710,11 +708,11 @@ class Session(dict):
                 self.timeout is not None
                 and now - session_data["_accessed_time"] > self.timeout
             ):
-                log.info("[session migration] [old reads] timeout")
+                log.debug("[session migration] [old reads] timeout")
                 self._increment("dd.beaker.reads.old.timeout", [])
                 timed_out = True
             else:
-                log.info("[session migration] [old reads] no timeout")
+                log.debug("[session migration] [old reads] no timeout")
                 # Properly set the last_accessed time, which is different
                 # than the *currently* _accessed_time
                 if self.is_new or "_accessed_time" not in session_data:
@@ -728,13 +726,14 @@ class Session(dict):
                 # Set the path if applicable
                 if "_path" in session_data:
                     self._path = session_data["_path"]
-                log.info("[session migration] [old reads] updating session")
+                self._increment("dd.beaker.reads.old.update", [])
+                log.debug("[session migration] [old reads] updating session")
                 self.update(session_data)
                 self.accessed_dict = session_data.copy()
         finally:
             self.namespace.release_read_lock()
         if timed_out:
-            log.info("[session migration] [old reads] timeout, invalidating session")
+            log.debug("[session migration] [old reads] timeout, invalidating session")
             self.invalidate()
 
     def save(self, accessed_only=False):
